@@ -7,7 +7,7 @@ import { VideoPlayer } from '../components/VideoPlayer'
 
 export function Watch() {
   const { channelId } = useParams<{ channelId: string }>()
-  const { channels, allChannels, loading } = useChannels()
+  const { channels, allChannels, loading, epgChannelIds } = useChannels()
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -95,5 +95,12 @@ export function Watch() {
     )
   }
 
-  return <VideoPlayer channel={channel} allChannels={orderedPlaylist} returnTo={returnTo} />
+  return (
+    <VideoPlayer
+      channel={channel}
+      allChannels={orderedPlaylist}
+      returnTo={returnTo}
+      epgChannelIds={epgChannelIds}
+    />
+  )
 }

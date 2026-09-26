@@ -1,3 +1,15 @@
+// Local development only — this file is NOT the deployed configuration.
+//
+// A Pages project treats a Wrangler file as its source of truth only when the
+// file carries `pages_build_output_dir`. This one deliberately does not, so the
+// deployed project keeps reading its bindings and variables from the Cloudflare
+// dashboard (Workers & Pages -> streamloomweb -> Settings) and `wrangler pages
+// dev` reads them from here. Adding `pages_build_output_dir` would make this
+// file authoritative and silently discard every binding and variable currently
+// set in the dashboard, so it is not done as part of a feature change.
+//
+// Everything below therefore has to be mirrored in the dashboard by the owner;
+// README.md "Cloudflare Pages Deployment" lists the exact steps.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "streamloomweb",
@@ -11,8 +23,17 @@
   },
   "r2_buckets": [
     {
+      // Read-only in code: /api/icons serves stored icons and cannot write (WO-01).
       "binding": "ICONS_BUCKET",
       "bucket_name": "channel-icons"
+    },
+    {
+      // The ONLY write capability this project has (ADR-0033 §6). Scoped to the
+      // catalogue bucket alone: it must never be pointed at `channel-icons`,
+      // whose route is public, and it replaces the need for any R2 API token,
+      // Supabase key or Upstash token in this repository.
+      "binding": "CATALOGUE_BUCKET",
+      "bucket_name": "streamloom-catalogue"
     }
   ]
 }

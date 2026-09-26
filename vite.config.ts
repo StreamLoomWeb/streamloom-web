@@ -1,7 +1,6 @@
 import { defineConfig } from 'vite'
 import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
-import { VitePWA } from 'vite-plugin-pwa'
 
 interface EdgeStreamsPayload {
   channelId: string
@@ -405,70 +404,44 @@ function streamProxyPlugin(): Plugin {
   }
 }
 
+/**
+ * Starts the catalogue pointer (`meta.json`, ADR-0030) downloading with the HTML.
+ *
+ * The client can only ask for it once its JavaScript has loaded and run, and every
+ * catalogue object waits on it, so on a first visit it sat alone on the critical
+ * path (measured ~0.5 s after the bundle). A preload lets it arrive while the bundle
+ * downloads. Same URL, mode and credentials as the `fetch` in `src/api/r2.ts`, so the
+ * browser hands that fetch the preloaded response instead of asking again.
+ */
+function cataloguePreloadPlugin(): Plugin {
+  let base = ''
+  return {
+    name: 'catalogue-preload',
+    configResolved(config) {
+      base = String(config.env.VITE_CATALOGUE_R2_BASE_URL ?? '').trim().replace(/\/+$/, '')
+    },
+    transformIndexHtml() {
+      let origin: string
+      try {
+        origin = new URL(base).origin
+      } catch {
+        return []
+      }
+      if (!/^https?:\/\//i.test(base)) return []
+      return [
+        { tag: 'link', attrs: { rel: 'preconnect', href: origin, crossorigin: 'anonymous' }, injectTo: 'head' },
+        { tag: 'link', attrs: { rel: 'preload', as: 'fetch', href: `${base}/catalogue/meta.json`, crossorigin: 'anonymous' }, injectTo: 'head' },
+      ]
+    },
+  }
+}
+
 export default defineConfig({
   envPrefix: ['VITE_', 'UPSTASH_'],
   plugins: [
     react(),
     streamProxyPlugin(),
-    VitePWA({
-      registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'icons/*.png'],
-      manifest: {
-        name: 'StreamLoom',
-        short_name: 'StreamLoom',
-        description: 'Live TV & IPTV streaming, anywhere.',
-        theme_color: '#0a0a0f',
-        background_color: '#0a0a0f',
-        display: 'standalone',
-        orientation: 'landscape',
-        start_url: '/',
-        icons: [
-          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
-          { src: '/icons/icon-512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
-        ],
-      },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        // The media engine (vendor-hls) is code-split behind the /watch route,
-        // so keep it out of install-time precache: a first visit should not
-        // download ~575 kB it may never use. The runtime rule below caches it
-        // the first time playback actually needs it.
-        globIgnores: ['**/vendor-hls-*.js'],
-        runtimeCaching: [
-          {
-            // Media engine chunk, fetched only when the player route opens.
-            urlPattern: /vendor-hls-[A-Za-z0-9_-]+\.js/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'media-engine',
-              expiration: { maxEntries: 5, maxAgeSeconds: 31536000 },
-            },
-          },
-          {
-            // Channel icons from our own CDN. The origin already sends
-            // `Cache-Control: public, max-age=31536000, immutable` and purges the
-            // edge for replaced icons, so the SW mirrors that lifetime instead of
-            // the conservative 24h used for arbitrary third-party images below.
-            urlPattern: /^https:\/\/icons\.softarchium\.com\//i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'channel-icon-cdn',
-              expiration: { maxEntries: 1000, maxAgeSeconds: 31536000 },
-            },
-          },
-          {
-            // Cache other remote images (EPG art, third-party assets)
-            urlPattern: /\.(png|jpg|jpeg|webp|svg)$/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'image-cache',
-              expiration: { maxEntries: 500, maxAgeSeconds: 86400 },
-            },
-          },
-        ],
-      },
-    }),
+    cataloguePreloadPlugin(),
   ],
   resolve: {
     alias: { '@': '/src' },

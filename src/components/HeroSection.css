@@ -8,6 +8,16 @@
   align-items: flex-end;
 }
 
+/* Phone landscape: a 320px-minimum hero plus the desktop nav (Navbar.css)
+   leaves no room for actual channels on the first screen. Cap the hero to a
+   fraction of the real, chrome-aware viewport height instead of the 320px
+   floor above. */
+@media (max-height: 500px) {
+  .hero {
+    height: 40svh;
+  }
+}
+
 /* Blurred logo backdrop — a real <img> fed by the same 128px CDN object */
 .hero__bg {
   position: absolute;
@@ -139,14 +149,31 @@
   transition: all var(--duration-base) ease;
 }
 
+.hero__pause {
+  width: 20px; height: 20px;
+  margin-right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: var(--text-secondary);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.hero__pause:hover {
+  color: var(--text-primary);
+}
+
 .hero__dot--active {
   width: 20px;
   border-radius: 3px;
   background: var(--accent);
 }
 
-/* Responsive adjustments */
-@media (max-width: 640px) {
+/* Responsive adjustments — shared 600/840/1200 scale, see
+   src/styles/breakpoints.css. */
+@media (max-width: 599px) {
   .hero {
     height: clamp(260px, 38vh, 380px);
     border-radius: var(--radius-lg);

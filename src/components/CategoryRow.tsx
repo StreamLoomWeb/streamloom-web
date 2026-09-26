@@ -1,13 +1,12 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { ChannelCard } from './ChannelCard'
 import type { EnrichedChannel } from '../hooks/useChannels'
-import type { EpgProgram } from '../api/types'
 import './CategoryRow.css'
 
 interface Props {
   title: string
   channels: EnrichedChannel[]
-  nowPlayingMap?: Map<string, EpgProgram>
+  epgChannelIds?: Set<string>
   onWatch?: (channelId: string) => void
 }
 
@@ -17,7 +16,7 @@ const CHUNK_SIZE = 24
 /** How far ahead of the viewport a row starts mounting its cards. */
 const REVEAL_ROOT_MARGIN = '600px 0px'
 
-export function CategoryRow({ title, channels, nowPlayingMap, onWatch }: Props) {
+export function CategoryRow({ title, channels, epgChannelIds, onWatch }: Props) {
   const rowRef = useRef<HTMLDivElement>(null)
   const sectionRef = useRef<HTMLElement>(null)
   const [visibleCount, setVisibleCount] = useState(INITIAL_CHUNK)
@@ -131,7 +130,7 @@ export function CategoryRow({ title, channels, nowPlayingMap, onWatch }: Props) 
               <ChannelCard
                 key={ch.id}
                 channel={ch}
-                nowPlaying={nowPlayingMap?.get(ch.id)}
+                epgChannelIds={epgChannelIds}
                 onWatch={onWatch}
                 playlist={channels.map((c) => c.id)}
               />

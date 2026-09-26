@@ -1,0 +1,22 @@
+/* ============================================================
+   Shared breakpoint vocabulary — one scale for the whole PWA,
+   matching the Android app's Material3 WindowSizeClass tiers so
+   both products describe layout in the same words:
+
+     compact   < 600px   (phone portrait)
+     medium    600–839px (phone landscape, small tablet portrait)
+     expanded  840–1199px (tablet landscape, small desktop)
+     large     >= 1200px (desktop)
+
+   CSS custom properties can't be read inside an @media or @container
+   condition (no browser resolves var() there), so these numbers are
+   documentation, not enforcement: every @media/@container in this
+   codebase should use one of the three literal values below rather
+   than an ad hoc number. `src/styles/breakpoints.ts` holds the same
+   three numbers for any JS that needs them (e.g. useWindowSizeClass).
+   Keep the two files in sync by hand — there is no third place either
+   reads from.
+
+     max-width:  599px | 839px | 1199px   (below a tier)
+     min-width:  600px | 840px | 1200px   (at or above a tier)
+   ============================================================ */

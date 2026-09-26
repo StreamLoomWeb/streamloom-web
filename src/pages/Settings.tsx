@@ -18,7 +18,7 @@ import './Settings.css'
 
 export function Settings() {
   const { channels, allChannels, refresh } = useChannels()
-  const { theme, setTheme } = useTheme()
+  const { theme, preference, setTheme } = useTheme()
   const [lowLatency, setLowLatency] = useState(() => {
     return localStorage.getItem('sl_low_latency') !== 'false'
   })
@@ -28,6 +28,7 @@ export function Settings() {
   const [hiddenIds, setHiddenIds] = useState(() => [...getHiddenSet()])
   const [clearedNotice, setClearedNotice] = useState(false)
   const [clearedBrokenNotice, setClearedBrokenNotice] = useState(false)
+  const [clearedRecentNotice, setClearedRecentNotice] = useState(false)
 
   useEffect(() => {
     return onStreamStateChange(() => {
@@ -69,19 +70,39 @@ export function Settings() {
   }
 
   const handleClearCache = () => {
+    if (!window.confirm('Clear the cached catalogue and stream health records? This does not touch your Continue Watching history or favourites.')) {
+      return
+    }
     try {
-      // The catalogue lives in IndexedDB now, so clear that too.
+      // The catalogue lives in IndexedDB now, so clear that too. Continue
+      // Watching (sl_recent_v1) is a separate, user-visible history — it has
+      // its own button below and is never touched by this one.
       clearCatalogueCache()
       localStorage.removeItem('sl_catalogue_v5')
       localStorage.removeItem('sl_catalogue_v4')
       localStorage.removeItem('sl_catalogue_v3')
       localStorage.removeItem('sl_catalogue_v2')
-      localStorage.removeItem('sl_recent_v1')
       sessionStorage.removeItem('sl_active_playlist')
       clearWorkingStreams()
       setClearedNotice(true)
       setTimeout(() => {
         setClearedNotice(false)
+        refresh()
+      }, 1500)
+    } catch {
+      // ignore
+    }
+  }
+
+  const handleClearRecent = () => {
+    if (!window.confirm('Clear your Continue Watching history? This cannot be undone.')) {
+      return
+    }
+    try {
+      localStorage.removeItem('sl_recent_v1')
+      setClearedRecentNotice(true)
+      setTimeout(() => {
+        setClearedRecentNotice(false)
         refresh()
       }, 1500)
     } catch {
@@ -111,17 +132,29 @@ export function Settings() {
               <div className="settings-item__info">
                 <strong>Color Palette</strong>
                 <span>
-                  {theme === 'dark'
-                    ? 'Agate Black (Deep sleek onyx & graphite styling)'
-                    : 'Alabaster Silk (Warm cashmere light background with crisp typography)'}
+                  {preference === 'system'
+                    ? `Follows your device (currently ${theme === 'dark' ? 'Agate Black' : 'Alabaster Silk'})`
+                    : theme === 'dark'
+                      ? 'Agate Black (Deep sleek onyx & graphite styling)'
+                      : 'Alabaster Silk (Warm cashmere light background with crisp typography)'}
                 </span>
               </div>
               <div className="theme-toggle-group" role="radiogroup" aria-label="Theme selection">
                 <button
                   type="button"
                   role="radio"
-                  aria-checked={theme === 'dark'}
-                  className={`theme-toggle-btn ${theme === 'dark' ? 'theme-toggle-btn--active' : ''}`}
+                  aria-checked={preference === 'system'}
+                  className={`theme-toggle-btn ${preference === 'system' ? 'theme-toggle-btn--active' : ''}`}
+                  onClick={() => setTheme('system')}
+                >
+                  <span className="theme-toggle-btn__icon">🖥️</span>
+                  <span className="theme-toggle-btn__label">System</span>
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={preference === 'dark'}
+                  className={`theme-toggle-btn ${preference === 'dark' ? 'theme-toggle-btn--active' : ''}`}
                   onClick={() => setTheme('dark')}
                 >
                   <span className="theme-toggle-btn__icon">🌙</span>
@@ -130,8 +163,8 @@ export function Settings() {
                 <button
                   type="button"
                   role="radio"
-                  aria-checked={theme === 'light'}
-                  className={`theme-toggle-btn ${theme === 'light' ? 'theme-toggle-btn--active' : ''}`}
+                  aria-checked={preference === 'light'}
+                  className={`theme-toggle-btn ${preference === 'light' ? 'theme-toggle-btn--active' : ''}`}
                   onClick={() => setTheme('light')}
                 >
                   <span className="theme-toggle-btn__icon">☀️</span>
@@ -162,6 +195,7 @@ export function Settings() {
                   type="checkbox"
                   checked={lowLatency}
                   onChange={(e) => handleLowLatencyChange(e.target.checked)}
+                  aria-label="Ultra-Low Latency Mode"
                 />
                 <span className="toggle-slider" />
               </label>
@@ -177,6 +211,7 @@ export function Settings() {
                   type="checkbox"
                   checked={autoSkip}
                   onChange={(e) => handleAutoSkipChange(e.target.checked)}
+                  aria-label="Auto-Skip Unavailable Channels"
                 />
                 <span className="toggle-slider" />
               </label>
@@ -192,6 +227,7 @@ export function Settings() {
                   type="checkbox"
                   checked={hideBroken}
                   onChange={(e) => handleHideBrokenChange(e.target.checked)}
+                  aria-label="Hide Failed Channels"
                 />
                 <span className="toggle-slider" />
               </label>
@@ -222,6 +258,20 @@ export function Settings() {
                 disabled={clearedNotice}
               >
                 {clearedNotice ? 'Cleared!' : 'Clear Cache'}
+              </button>
+            </div>
+
+            <div className="settings-item">
+              <div className="settings-item__info">
+                <strong>Continue Watching History</strong>
+                <span>Channels remembered for the Continue Watching row on Home</span>
+              </div>
+              <button
+                className="settings-btn settings-btn--danger"
+                onClick={handleClearRecent}
+                disabled={clearedRecentNotice}
+              >
+                {clearedRecentNotice ? 'Cleared!' : 'Clear History'}
               </button>
             </div>
 
@@ -321,6 +371,14 @@ export function Settings() {
               <div className="shortcut-item">
                 <kbd>M</kbd>
                 <span>Toggle Mute</span>
+              </div>
+              <div className="shortcut-item">
+                <kbd>C</kbd>
+                <span>Toggle Subtitles</span>
+              </div>
+              <div className="shortcut-item">
+                <kbd>A</kbd>
+                <span>Cycle Audio Track</span>
               </div>
               <div className="shortcut-item">
                 <kbd>Esc</kbd>

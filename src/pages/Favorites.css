@@ -38,6 +38,7 @@
 }
 
 .favorites-page__grid {
+  container-type: inline-size;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: var(--space-lg);
@@ -47,18 +48,22 @@
   width: 100%;
 }
 
-@media (max-width: 768px) {
+/* Shared 600/840/1200 scale, see src/styles/breakpoints.css. */
+@media (max-width: 839px) {
   .favorites-page__title {
     font-size: 1.6rem;
   }
+}
 
+/* Card count follows the grid's own width, not the viewport's. */
+@container (max-width: 839px) {
   .favorites-page__grid {
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: var(--space-md);
   }
 }
 
-@media (max-width: 480px) {
+@container (max-width: 599px) {
   .favorites-page__grid {
     grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
     gap: 10px;

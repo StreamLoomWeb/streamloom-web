@@ -11,3 +11,31 @@
 
 /manifest.webmanifest
   Cache-Control: public, max-age=86400
+
+# The retired service worker's replacement (ADR-0045). A browser still running the old
+# worker must fetch these bytes on its next update check, not an HTTP-cached copy.
+/sw.js
+  Cache-Control: no-cache
+
+# The picks portal is unlisted (ADR-0033 §5): nothing links to it and it is in no
+# sitemap, so the only ways a crawler finds it are a referrer leak or a guess.
+# `noindex` keeps it out of an index if one does, and `no-store` keeps the
+# authenticated page out of every cache between Cloudflare and the browser.
+# This is hygiene, not the access control: the Access application in front of the
+# route is, and the Function behind /api/picks verifies the Access JWT itself.
+/admin
+  X-Robots-Tag: noindex, nofollow, noarchive
+  Cache-Control: no-store
+
+/admin/*
+  X-Robots-Tag: noindex, nofollow, noarchive
+  Cache-Control: no-store
+
+# Every response from the write path is per-identity and must never be stored.
+/api/picks
+  X-Robots-Tag: noindex, nofollow
+  Cache-Control: no-store
+
+/api/picks/*
+  X-Robots-Tag: noindex, nofollow
+  Cache-Control: no-store

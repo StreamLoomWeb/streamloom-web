@@ -8,7 +8,7 @@ import './Favorites.css'
 
 export function Favorites() {
   const location = useLocation()
-  const { channels, loading } = useChannels()
+  const { channels, allChannels, epgChannelIds, loading } = useChannels()
   const { favouriteIds } = useFavourites()
   const { addRecent } = useRecent()
   const [search, setSearch] = useState('')
@@ -27,10 +27,10 @@ export function Favorites() {
    */
   const deferredSearch = useDeferredValue(search)
   const filtered = useMemo(() => {
-    const matchSet = computeMatchSet(normalizeSearch(deferredSearch.trim()))
+    const matchSet = computeMatchSet(normalizeSearch(deferredSearch.trim()), allChannels)
     if (!matchSet) return favChannels
     return favChannels.filter((ch) => matchSet.has(ch.id))
-  }, [favChannels, deferredSearch])
+  }, [favChannels, deferredSearch, allChannels])
 
   const filteredPlaylist = useMemo(() => filtered.map((c) => c.id), [filtered])
 
@@ -95,6 +95,7 @@ export function Favorites() {
             <ChannelCard
               key={channel.id}
               channel={channel}
+              epgChannelIds={epgChannelIds}
               playlist={filteredPlaylist}
               onWatch={(id) => addRecent(id)}
             />

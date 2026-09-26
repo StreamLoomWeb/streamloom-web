@@ -14,6 +14,36 @@
   cursor: pointer;
 }
 
+/* B9: an inert marker left in the video's normal spot while it's moved into the
+   Document PiP window, so it can be reinserted in the same position on close. */
+.player__video-host {
+  display: none;
+}
+
+.player__pip-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: #000;
+  color: #fff;
+  /* Above .player__state-overlay (z-index 5): the relocated stream can still
+     buffer or error while the mini-player is open, and this placeholder — the
+     only thing here that says where the video went and how to get it back —
+     must not end up buried under that overlay. */
+  z-index: 6;
+}
+
+/* Crops letterboxing to fill the viewport edge-to-edge, trading off the
+   cropped edges of the picture — most useful on phones playing a 16:9
+   stream in portrait, where 'contain' otherwise leaves large black bars. */
+.player__video--zoomed {
+  object-fit: cover;
+}
+
 /* Overlays (Buffering & Error) */
 .player__toast {
   position: absolute;
@@ -196,6 +226,14 @@
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
+}
+
+/* The HUD's own D-pad focus (VideoPlayer.tsx's onKey) needs a visible ring —
+   without one, moving focus between controls is invisible on a TV remote. */
+.player__hud button:focus-visible {
+  outline: 2px solid var(--accent, #7c6ef7);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 /* Hide mouse cursor in fullscreen when overlay is hidden */
@@ -641,8 +679,9 @@
   opacity: 1;
 }
 
-/* Responsive Player Controls */
-@media (max-width: 768px) {
+/* Responsive Player Controls — shared 600/840/1200 scale, see
+   src/styles/breakpoints.css. */
+@media (max-width: 839px) {
   .player__hud {
     padding: 10px 14px;
   }
@@ -759,10 +798,20 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  width: 100%;
   padding: 10px 14px;
   border-radius: 12px;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
   transition: background 0.15s;
+  /* Every channel renders on open (no virtualization here); skip layout
+     and paint for rows that are off-screen so a large playlist stays smooth. */
+  content-visibility: auto;
+  contain-intrinsic-size: 0 48px;
 }
 
 .player__drawer-item:hover {
@@ -795,8 +844,15 @@
   flex-shrink: 0;
 }
 
-.player__drawer-name {
+.player__drawer-info {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.player__drawer-name {
   font-size: 0.9rem;
   font-weight: 600;
   white-space: nowrap;
@@ -805,10 +861,87 @@
 }
 
 .player__drawer-badge {
+  align-self: flex-start;
   font-size: 0.7rem;
   font-weight: 700;
   background: var(--bg-card);
   padding: 2px 6px;
   border-radius: 4px;
   color: var(--text-muted);
+}
+
+.player__drawer-epg {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  min-width: 0;
+}
+
+.player__drawer-epg-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.player__drawer-next {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+/* B9: zap controls rendered inside the Document PiP window itself (not this page —
+   this stylesheet is copied into that window's <head> so these rules apply there). */
+.player__pip-controls {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  background: rgba(15, 15, 20, 0.92);
+  color: #fff;
+  font-family: inherit;
+}
+
+.player__pip-controls button {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.player__pip-controls button:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+.player__pip-controls-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.player__pip-controls-info img {
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.player__pip-controls-info span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

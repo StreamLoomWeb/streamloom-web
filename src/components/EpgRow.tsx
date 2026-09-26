@@ -16,6 +16,8 @@ interface Props {
   rowHeight: number
   /** Absolute row offset inside the virtualized spacer, in px. */
   top: number
+  /** Position in the full (unwindowed) channel list — the guide's arrow-key nav targets rows by this. */
+  rowIndex: number
   onPick: (channelId: string) => void
 }
 
@@ -43,6 +45,7 @@ export const EpgRow = memo(function EpgRow({
   sidebarWidth,
   rowHeight,
   top,
+  rowIndex,
   onPick,
 }: Props) {
   const logoSrc = logoUrl(channel.logo)
@@ -109,6 +112,7 @@ export const EpgRow = memo(function EpgRow({
     <div
       className="epg-guide__row"
       style={{ transform: `translateY(${top}px)`, height: rowHeight }}
+      data-row-index={rowIndex}
     >
       <div
         className="epg-guide__channel"

@@ -266,7 +266,8 @@ input:checked + .toggle-slider:before {
   color: var(--text-secondary);
 }
 
-@media (max-width: 600px) {
+/* Shared 600/840/1200 scale, see src/styles/breakpoints.css. */
+@media (max-width: 599px) {
   .settings-card {
     padding: 18px 16px;
     border-radius: 16px;

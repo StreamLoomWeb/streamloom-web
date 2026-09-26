@@ -1,0 +1,5 @@
+{
+  "name": "streamloomweb-workerd-smoke-fixture",
+  "private": true,
+  "description": "Test-only fixture for e2e/workerd-smoke.spec.ts. Stops wrangler's project-root detection (nearest package.json) from walking up into the real project. Never built, never deployed."
+}

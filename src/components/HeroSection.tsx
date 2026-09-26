@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import type { EnrichedChannel } from '../hooks/useChannels'
 import { formatCountryDisplay } from '../util/country'
 import { LOGO_SIZE, logoUrl, handleLogoError } from '../util/logo'
+import { prefetchPlaylist } from '../util/playlistPrefetch'
+import { prefersReducedMotion } from '../util/motion'
 import './HeroSection.css'
 
 interface Props {
@@ -12,17 +14,20 @@ interface Props {
 export function HeroSection({ channels }: Props) {
   const navigate = useNavigate()
   const [index, setIndex] = useState(0)
+  // Auto-advancing content needs a way to stop it (vestibular safety); start
+  // stopped for anyone who has already told the OS they don't want motion.
+  const [isPaused, setIsPaused] = useState(prefersReducedMotion)
 
   // Rotate every 8 seconds across top 5 channels with streams & logos
   const heroChannels = channels.filter((c) => c.stream && logoUrl(c.logo)).slice(0, 5)
 
   useEffect(() => {
-    if (heroChannels.length <= 1) return
+    if (heroChannels.length <= 1 || isPaused) return
     const id = setInterval(() => {
       setIndex((i) => (i + 1) % heroChannels.length)
     }, 8000)
     return () => clearInterval(id)
-  }, [heroChannels.length])
+  }, [heroChannels.length, isPaused])
 
   const featured = heroChannels[index]
   if (!featured) return null
@@ -71,6 +76,7 @@ export function HeroSection({ channels }: Props) {
           <button
             className="hero__btn hero__btn--primary"
             onClick={() => {
+              prefetchPlaylist(featured)
               sessionStorage.setItem('sl_last_viewed', featured.id)
               try {
                 sessionStorage.removeItem('sl_active_playlist')
@@ -95,6 +101,16 @@ export function HeroSection({ channels }: Props) {
 
       {/* Dots indicator */}
       <div className="hero__dots">
+        {heroChannels.length > 1 && (
+          <button
+            className="hero__pause"
+            onClick={() => setIsPaused((p) => !p)}
+            aria-label={isPaused ? 'Resume auto-rotating' : 'Pause auto-rotating'}
+            title={isPaused ? 'Resume' : 'Pause'}
+          >
+            {isPaused ? '▶' : '⏸'}
+          </button>
+        )}
         {heroChannels.map((_, i) => (
           <button
             key={i}

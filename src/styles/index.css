@@ -3,6 +3,8 @@
    Dark, glassmorphism, Apple TV-inspired
    ============================================================ */
 
+@import './breakpoints.css';
+
 /*
  * Font loading is intentionally non-blocking: Inter is served via a
  * print-media stylesheet swap in index.html so first paint renders with
@@ -78,6 +80,17 @@
   --sal: env(safe-area-inset-left, 0px);
 }
 
+/* Compact nav: phone landscape (a short viewport, not a narrow one — hence
+   max-height, not max-width) has too little vertical room to spend 64px+60px
+   of it on chrome. Every consumer of these two tokens (Navbar.css's bars,
+   the page-wrapper padding they size) shrinks together. */
+@media (max-height: 500px) {
+  :root {
+    --nav-height: 48px;
+    --mobile-tab-height: 44px;
+  }
+}
+
 /* ---------- Light Theme: Alabaster Silk (Super Classy & Tailored) ---------- */
 [data-theme="light"] {
   --bg-void: #eaeaf0;
@@ -115,6 +128,21 @@ html {
   scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/*
+ * 10-foot mode (S5): a TV browser (util/tvMode.ts sets this attribute before
+ * first paint) reads from further away and can lose content past the bezel.
+ * The type scale goes up site-wide, and overscan padding rides the same
+ * safe-area tokens Navbar.css and .page-wrapper already build their padding
+ * from — one override here, no other file needs to know TV mode exists.
+ */
+html[data-tv-mode='true'] {
+  font-size: 20px;
+  --sat: calc(env(safe-area-inset-top, 0px) + 32px);
+  --sar: calc(env(safe-area-inset-right, 0px) + 32px);
+  --sab: calc(env(safe-area-inset-bottom, 0px) + 32px);
+  --sal: calc(env(safe-area-inset-left, 0px) + 32px);
 }
 
 body {
@@ -174,7 +202,9 @@ ul, ol { list-style: none; }
   min-height: 100dvh;
 }
 
-@media (max-width: 767px) {
+/* Must match Navbar.css's mobile-nav switch point — shared 600/840/1200
+   scale, see src/styles/breakpoints.css. */
+@media (max-width: 839px) {
   .page-wrapper {
     padding-bottom: calc(var(--mobile-tab-height) + var(--sab) + 24px);
   }
@@ -228,4 +258,17 @@ ul, ol { list-style: none; }
   /* Neutral: Apple does not use film grain, and a blend layer forces the
   /* scrolling page behind it to re-composite on every frame. */
   mix-blend-mode: normal;
+}
+
+/* ---------- Reduced motion ---------- */
+/* Vestibular safety, site-wide: every animation and transition collapses to
+   an instant state change for anyone with this OS preference set, not just
+   the few components that opted in locally. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
