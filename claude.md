@@ -116,6 +116,13 @@ streamloom-web/
 - Schedules are persisted in the `schedules` object store of the same IndexedDB (`catalogueStore.ts`), keyed by `<generation>:<channelId>`, and read by `scheduleLoader.ts` before Redis. An entry expires when every programme has ended or the generation changes; a write also drops other generations.
 - `e2e/guide-requests.spec.ts` counts reads against an in-process Upstash mock (`e2e/support/upstashMock.ts`) and fails on a regression. Do not use `MGET` until it is confirmed to bill as one command.
 
+### 5. FixerBot Buffering Mascot
+- **Rule**: `FixerBotMascot.tsx`/`.css` are a verbatim port of the Android/TV FixerBot character and choreography (design history in the FixerBot plan's "Web parity (StreamLoomWeb)" section, prototyped live as claude.ai Artifact `VFzxVdTaYLdjwfK8sH4Fdy`) — not a redesign. The palette (pearl/blue/steel/visor/eyes/wrench/badge hexes, all inline on the SVG) and the choreography's numeric timing tables are kept identical across every Streamloom client on purpose, so they must never be remapped to this repo's `--accent`/`--accent-2` "Agate Black" tokens.
+- Replaces the plain spinner in `VideoPlayer.tsx`'s `player__state-overlay--connecting` (same `isBuffering && !hasError` trigger; the spinner div itself, `.guide-loader`, is untouched since `Guide.tsx`/`Favorites.tsx` still use it elsewhere).
+- The rig mutates SVG attributes directly on refs inside one `requestAnimationFrame` loop — never through React state per frame, the same "never read animated values through a recomposition" discipline the Android side follows for its own `Canvas` rig.
+- `prefers-reduced-motion` freezes on a single designed still frame (mid-`ratchet`, wrench on the band, mood focused) instead of starting the loop, and disables the ring's CSS spin — never a blank or mid-transition frame.
+- `src/api/occasion.ts` reads a small backend-published occasion document (`catalogue:occasion`, schema `{"schema":1,"active":string|null}`) through the existing `redisGet()` client. Fallback discipline mirrors `fetchCatalogueMeta()`: a failed/malformed read keeps the last successfully-decoded accessory; a successful read — including an `active` id not yet in `OCCASION_ACCESSORY` — updates it to "no accessory," since that's a real decoded state, not a failure. The backend document doesn't exist yet as of this writing, so today this always renders no accessory, by design.
+
 ### 3. Keyboard & Smart TV Navigation
 - Navigation uses a single stable listener pattern with `onKeyRef` in `VideoPlayer.tsx` to ensure zero dropped keypresses.
 - Keys:

@@ -4,6 +4,8 @@ import Hls from 'hls.js'
 import type { EnrichedChannel } from '../hooks/useChannels'
 import type { EpgProgram } from '../api/types'
 import { useEpg, useFavourites, useRecent } from '../hooks/useChannels'
+import { useOccasionAccessory } from '../api/occasion'
+import { FixerBotMascot } from './FixerBotMascot'
 import { formatCountryDisplay } from '../util/country'
 import { LOGO_SIZE, logoUrl, handleLogoError } from '../util/logo'
 import { orderStreamsForPlayback, rankResolution } from '../util/resolution'
@@ -62,6 +64,7 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
   const { programs } = useEpg(channel.id)
   const { isFavourite, toggle } = useFavourites()
   const { addRecent } = useRecent()
+  const occasionAccessory = useOccasionAccessory()
 
   const [isPlaying, setIsPlaying] = useState(true)
   const [isMuted, setIsMuted] = useState(false)
@@ -1295,7 +1298,7 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
       {/* Buffering Indicator */}
       {isBuffering && !hasError && (
         <div className="player__state-overlay player__state-overlay--connecting">
-          <div className="guide-loader" />
+          <FixerBotMascot accessory={occasionAccessory} />
           <div className="player__connecting-content">
             <p className="player__connecting-title">
               {isSlowConnecting ? 'Stream is slow to respond' : `Connecting to ${channel.name}…`}
