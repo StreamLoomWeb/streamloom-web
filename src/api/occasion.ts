@@ -2,12 +2,20 @@
  * Backend-driven seasonal accessory for FixerBotMascot — read-only, same
  * Upstash client as the rest of the catalogue (see redis.ts).
  *
- * The backend document (published separately, see the FixerBot plan) is
- * expected to look like `{"schema": 1, "active": "diwali" | ... | null}` at
- * key `catalogue:occasion`. The app only needs to know how to render a fixed,
- * small set of accessories — not which one is active today, so an occasion id
- * that doesn't exist yet in OCCASION_ACCESSORY degrades to "no accessory"
- * rather than blocking or crashing.
+ * The backend document (published separately in streamloom-backend, tracked
+ * there as ADR-0047 — not yet merged as of this writing, nothing is live
+ * yet) is expected to look like
+ * `{"schema": 1, "occasions": [{"id": "diwali", "region": "IN"}, {"id": "halloween"}]}`
+ * at key `catalogue:occasion`, or `{"schema": 1, "occasions": []}` when
+ * nothing is active anywhere. Multiple occasions can be active at once for
+ * different regions (e.g. Diwali for India while Halloween is also active
+ * globally), so resolveAccessory() below picks the entry for this device's
+ * own region, falling back to a region-less (global) entry, else nothing.
+ *
+ * The app only needs to know how to render a fixed, small set of
+ * accessories — not which ones are active today, so an occasion id that
+ * doesn't exist yet in OCCASION_ACCESSORY degrades to "no accessory" rather
+ * than blocking or crashing (same forward-compatibility contract as before).
  *
  * Fallback discipline mirrors fetchCatalogueMeta()'s generation caching: a
  * failed/malformed read keeps the last successfully-decoded value; a
@@ -28,15 +36,19 @@ const OCCASION_ACCESSORY: Record<string, AccessoryId> = {
   christmas: 'santa-hat',
   diwali: 'diya',
   halloween: 'witch-hat',
-  'new-year': 'party-hat',
-  'republic-day': 'rosette',
-  'independence-day': 'rosette',
+  new_year: 'party-hat',
+  republic_day: 'rosette',
+  independence_day: 'rosette',
+}
+
+interface OccasionEntry {
+  id: string
+  region?: string
 }
 
 interface OccasionDoc {
   schema: number
-  active: string | null
-  region?: string
+  occasions: OccasionEntry[]
 }
 
 let lastGoodAccessory: AccessoryId | null = null
@@ -48,15 +60,36 @@ function notify(accessory: AccessoryId | null) {
   listeners.forEach((listener) => listener(accessory))
 }
 
+/** This device's own region (e.g. "IN"), from its locale — null when unavailable. */
+function getDeviceRegion(): string | null {
+  try {
+    const lang = navigator.language || navigator.languages?.[0]
+    if (!lang) return null
+    if (typeof Intl !== 'undefined' && 'Locale' in Intl) {
+      return new Intl.Locale(lang).maximize().region ?? null
+    }
+    return /-([A-Z]{2})$/.exec(lang)?.[1] ?? null
+  } catch {
+    return null
+  }
+}
+
+/** Prefers this device's own region, falls back to a region-less (global) entry, else none. */
+function resolveAccessory(occasions: OccasionEntry[]): AccessoryId | null {
+  const region = getDeviceRegion()
+  const chosen = (region && occasions.find((o) => o.region === region)) || occasions.find((o) => !o.region)
+  return chosen ? OCCASION_ACCESSORY[chosen.id] ?? null : null
+}
+
 async function readOnce(): Promise<AccessoryId | null> {
   const raw = await redisGet(OCCASION_KEY)
   if (raw === null) return lastGoodAccessory
 
   try {
     const doc = JSON.parse(raw) as OccasionDoc
-    if (doc.schema !== SUPPORTED_SCHEMA) return lastGoodAccessory
+    if (doc.schema !== SUPPORTED_SCHEMA || !Array.isArray(doc.occasions)) return lastGoodAccessory
 
-    const accessory = doc.active === null ? null : OCCASION_ACCESSORY[doc.active] ?? null
+    const accessory = resolveAccessory(doc.occasions)
     lastGoodAccessory = accessory
     return accessory
   } catch {
