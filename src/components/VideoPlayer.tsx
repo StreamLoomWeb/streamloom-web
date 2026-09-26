@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom'
 import Hls, { type PlaylistLoaderConstructor } from 'hls.js'
 import type { EnrichedChannel } from '../hooks/useChannels'
 import { useEpg, useFavourites, useRecent } from '../hooks/useChannels'
+import { useOccasionAccessory } from '../api/occasion'
+import { FixerBotMascot } from './FixerBotMascot'
 import { getCurrentProgram, getNextProgram } from '../util/epgNow'
 import { LOGO_SIZE, logoUrl, handleLogoError } from '../util/logo'
 import { markPlayerLogoForTransition } from '../util/viewTransition'
@@ -83,6 +85,7 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
   const { programs } = useEpg(channel.id)
   const { isFavourite, toggle } = useFavourites()
   const { addRecent } = useRecent()
+  const occasionAccessory = useOccasionAccessory()
 
   const [isPlaying, setIsPlaying] = useState(true)
   const [isPip, setIsPip] = useState(false)
@@ -1624,7 +1627,7 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
       {/* Buffering Indicator */}
       {isBuffering && !hasError && (
         <div className="player__state-overlay player__state-overlay--connecting">
-          <div className="guide-loader" />
+          <FixerBotMascot accessory={occasionAccessory} />
           <div className="player__connecting-content">
             <p className="player__connecting-title">
               {isSlowConnecting ? 'Stream is slow to respond' : `Connecting to ${channel.name}…`}

@@ -1,0 +1,49 @@
+/*
+ * FixerBotMascot — sizing and the ring's spin. Palette lives inline on the
+ * SVG itself (see FixerBotMascot.tsx) and is intentionally independent of
+ * this file's usual theme tokens: it's the same mascot across every
+ * Streamloom client, not a per-app reskin.
+ */
+
+.fixerbot {
+  width: min(60vw, 240px);
+  aspect-ratio: 440 / 360;
+  pointer-events: none;
+}
+
+.fixerbot__svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.fixerbot-ring {
+  animation: fixerbot-spin 1.6s linear infinite;
+}
+
+.fixerbot-diya-flame {
+  animation: fixerbot-flicker 0.9s ease-in-out infinite;
+  transform-origin: 0px -4px;
+}
+
+@keyframes fixerbot-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fixerbot-flicker {
+  0%, 100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(0.85);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fixerbot-ring,
+  .fixerbot-diya-flame {
+    animation: none;
+  }
+}
