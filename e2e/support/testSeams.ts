@@ -26,6 +26,10 @@ export interface SeamRegistry {
   resetIptvCache?: () => void
   /** Backdates the held iptv-org copy (and the retry floor) by `byMs`. */
   ageIptvCache?: (byMs: number) => void
+  /** Drops the memoised live channel-id set held by `/api/t`. */
+  resetActiveIdsCache?: () => void
+  /** Drops the in-memory copy of the last `/api/stats` answer. */
+  resetStatsCache?: () => void
 }
 
 const registry: SeamRegistry = {}
@@ -47,3 +51,5 @@ function required<K extends keyof SeamRegistry>(name: K): NonNullable<SeamRegist
 export const resetJwksCache = (): void => required('resetJwksCache')()
 export const resetIptvCache = (): void => required('resetIptvCache')()
 export const ageIptvCache = (byMs: number): void => required('ageIptvCache')(byMs)
+export const resetActiveIdsCache = (): void => required('resetActiveIdsCache')()
+export const resetStatsCache = (): void => required('resetStatsCache')()

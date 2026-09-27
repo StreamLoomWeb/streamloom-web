@@ -31,6 +31,7 @@ import { killLoggedProcess, spawnLogged, wait, waitUntilReady, type LoggedProces
 const FIXTURE_DIR = path.dirname(fileURLToPath(import.meta.url)) + '/support/workerd-smoke'
 const WRANGLER_PORT = 5200
 const WRANGLER_URL = `http://127.0.0.1:${WRANGLER_PORT}`
+const WRANGLER_URL_T = `http://127.0.0.1:${WRANGLER_PORT + 1}`
 const READY_TIMEOUT_MS = 60_000
 const DISPATCH_TIMEOUT_MS = 10_000
 
@@ -43,6 +44,66 @@ async function waitForDispatch(dispatchMock: ReturnType<typeof createDispatchMoc
     throw new Error(`dispatch never reached the mock within ${DISPATCH_TIMEOUT_MS}ms.\nwrangler output:\n${wrangler?.log() ?? ''}`)
   }
 }
+
+test.describe('POST /api/t under real workerd (WO-22)', () => {
+  // Shares the fixture server below (fixed port), so it runs in the same worker, serially.
+  test.describe.configure({ mode: 'default' })
+
+  let wrangler: LoggedProcess | null = null
+
+  test.beforeAll(async () => {
+    wrangler = spawnLogged('npx', [
+      'wrangler', 'pages', 'dev', '--cwd', FIXTURE_DIR, '--ip', '127.0.0.1', '--port', String(WRANGLER_PORT + 1),
+      '--inspector-port', '9231',
+    ])
+    await waitUntilReady(`${WRANGLER_URL_T}/`, READY_TIMEOUT_MS)
+  })
+
+  test.afterAll(() => killLoggedProcess(wrangler))
+
+  const post = (body: string | null, headers: Record<string, string> = {}, method = 'POST') =>
+    fetch(`${WRANGLER_URL_T}/api/t`, {
+      method,
+      headers: { 'content-type': 'application/json', ...headers },
+      ...(body === null ? {} : { body }),
+    })
+
+  test('Sec-GPC: 1 and DNT: 1 answer 204 with nothing else', async () => {
+    for (const header of ['sec-gpc', 'dnt']) {
+      const res = await post(JSON.stringify({ v: 1, p: 'web', a: '1.0', b: [{ e: 'guide_open' }] }), { [header]: '1' })
+      expect(res.status, wrangler?.log()).toBe(204)
+      expect(await res.text()).toBe('')
+      expect(res.headers.get('access-control-allow-origin')).toBeNull()
+    }
+  })
+
+  test('an accepted batch writes through the real Analytics Engine binding and answers 202', async () => {
+    const res = await post(JSON.stringify({ v: 1, p: 'web', a: '1.0', b: [{ e: 'guide_open' }, { e: 'search', z: 1 }] }))
+    expect(res.status, wrangler?.log()).toBe(202)
+    expect(res.headers.get('x-telemetry-dropped')).toBe('0')
+    expect(await res.text()).toBe('')
+  })
+
+  test('a channel id the (empty) local catalogue bucket does not list is dropped, not refused', async () => {
+    const res = await post(JSON.stringify({ v: 1, p: 'web', a: '1.0', b: [{ e: 'play', c: 'Nobody.zz', s: '0123456789abcdef' }, { e: 'guide_open' }] }))
+    expect(res.status, wrangler?.log()).toBe(202)
+    expect(res.headers.get('x-telemetry-dropped')).toBe('1')
+  })
+
+  test('a malformed or over-size batch is refused with validateBatch\'s reason', async () => {
+    const bad = await post('{"v":1,')
+    expect(bad.status).toBe(400)
+    expect(await bad.json()).toEqual({ error: 'refused', reason: 'not JSON' })
+    const clock = await post(JSON.stringify({ v: 1, p: 'web', a: '1.0', b: [{ e: 'guide_open', t: 1 }] }))
+    expect(clock.status).toBe(400)
+    expect(await clock.json()).toEqual({ error: 'refused', reason: 'guide_open does not carry "t"' })
+    const big = await post(JSON.stringify({ v: 1, p: 'web', a: '1.0', b: Array.from({ length: 20 }, () => ({ e: 'guide_open' })) }) + ' '.repeat(3000))
+    expect(big.status).toBe(400)
+    expect(await big.json()).toEqual({ error: 'refused', reason: 'over 2048 bytes' })
+    const preflight = await post(null, {}, 'OPTIONS')
+    expect(preflight.status).toBe(405)
+  })
+})
 
 test.describe('fast-track dispatch under real workerd (regression: 2026-09-22 silent-dispatch incident)', () => {
   // One worker for the whole group: it shares one server on a fixed port.

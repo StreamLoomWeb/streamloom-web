@@ -121,8 +121,11 @@ test.describe('Upstash read budget', () => {
     await settle(page, mock)
     report('cold catalogue load', mock)
 
-    // One generation pointer, every page once, no schedules on the home page.
-    expect(mock.count('schedule')).toBe(0)
+    // One generation pointer, every bulk object once. Each card's "now playing" badge
+    // (useNowPlaying) also reads its own channel's schedule once visible — never every
+    // channel, only the ones on screen — so this is bounded, not zero.
+    expect(mock.count('schedule')).toBeGreaterThan(0)
+    expect(mock.count('schedule')).toBeLessThan(30)
     expect(mock.count('channels')).toBe(6)
     expect(mock.count('streams')).toBe(9)
   })

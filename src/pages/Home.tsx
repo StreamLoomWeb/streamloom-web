@@ -12,6 +12,7 @@ import { useKeyboardNav } from '../hooks/useKeyboardNav'
 import { getCountryName, getCountryFlag, formatCountryDisplay } from '../util/country'
 import { getLanguageName } from '../util/language'
 import { computeMatchSet, matchesSearch, normalizeSearch } from '../util/searchText'
+import { trackSearch } from '../telemetry/telemetry'
 import './Home.css'
 
 const PRIORITY_CATEGORIES = ['music', 'movies', 'cartoons', 'comedy', 'news', 'sports']
@@ -161,6 +162,15 @@ export function Home() {
   }, [playableChannels, passesNonSearch, matchSet])
 
   const activeGridChannels = grid
+
+  // Telemetry (ADR-0047): a `search` event says only whether a settled query returned nothing.
+  // Settled means the typing paused; the text itself is never sent, so a keystroke is not an event.
+  useEffect(() => {
+    if (!normalizedSearch) return
+    const count = activeGridChannels.length
+    const timer = window.setTimeout(() => trackSearch(count), 800)
+    return () => window.clearTimeout(timer)
+  }, [normalizedSearch, activeGridChannels.length])
 
   /**
    * Counts for every facet, computed in **a single pass** over the playable

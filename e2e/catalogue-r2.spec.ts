@@ -212,7 +212,9 @@ test.describe('r2-golden.json', () => {
  * counted here so the read budget stays honest, and excluded from the
  * generation assertions below, which are about the snapshot objects.
  */
-const PLAIN_OBJECTS: R2Kind[] = ['meta', 'picks']
+// fastTrack (ADR-0043, WO-19) is generation-independent, same as picks and meta: PicksRow reads
+// it once on mount regardless of generation, so it belongs with the other non-bulk objects here.
+const PLAIN_OBJECTS: R2Kind[] = ['meta', 'picks', 'fastTrack']
 const generationKinds = () =>
   r2.requests.filter((r) => !PLAIN_OBJECTS.includes(r.kind))
 
@@ -230,12 +232,23 @@ test.describe('R2 first, then Redis', () => {
     expect(r2.count('streams')).toBe(1)
     expect(r2.count('categories')).toBe(1)
     expect(r2.count('epgIds')).toBe(1)
-    expect(r2.count('schedule')).toBe(0)
+    // Each card's "now playing" badge (useNowPlaying, "Add player mini-guide, now-playing
+    // cards and TV mode") reads its own channel's schedule once it is visible (or within
+    // useVisible's 200px root margin) — never every channel, only the ones on screen.
+    expect(r2.count('schedule')).toBeGreaterThan(0)
+    expect(r2.count('schedule')).toBeLessThan(30)
     expect(r2.count('countries')).toBe(0)
     // One request for picks.json, which has never been published: a 404, not a failure.
     expect(r2.count('picks')).toBe(1)
-    expect(r2.requests.length).toBe(6)
-    expect(r2.requests.filter((r) => r.kind !== 'picks').every((r) => r.status === 200)).toBe(true)
+    // PicksRow reads fast-track.json once on mount (ADR-0043, WO-19), independent of whether
+    // picks.json has anything pinned yet.
+    expect(r2.count('fastTrack')).toBe(1)
+    const known = ['meta', 'channels', 'streams', 'categories', 'epgIds', 'countries', 'picks', 'fastTrack', 'schedule']
+    expect(r2.requests.length).toBe(known.reduce((n, kind) => n + r2.count(kind as R2Kind), 0))
+    // picks.json and fast-track.json are both 404 until the owner has ever published one —
+    // that is the fixture's normal state, not a failure.
+    const alwaysFresh: R2Kind[] = ['picks', 'fastTrack']
+    expect(r2.requests.filter((r) => !alwaysFresh.includes(r.kind)).every((r) => r.status === 200)).toBe(true)
     expect(redis.requests.length).toBe(0)
   })
 
@@ -263,7 +276,13 @@ test.describe('R2 first, then Redis', () => {
     await settle(page, redis)
     report('repeat load, same generation', redis)
 
-    expect(r2.requests.map((r) => r.kind).sort()).toEqual(['meta', 'picks'])
+    // The claim this test guards: an unchanged generation never re-downloads the bulk
+    // snapshot (served from IndexedDB instead). fastTrack (PicksRow) and schedule
+    // (useNowPlaying) are independent, per-mount reads that a fresh page load always
+    // repeats regardless of generation, so they are not part of that claim.
+    const bulkKinds: R2Kind[] = ['channels', 'streams', 'categories', 'epgIds']
+    expect(r2.requests.some((r) => bulkKinds.includes(r.kind))).toBe(false)
+    expect(r2.count('meta')).toBe(1)
     expect(redis.requests.length).toBe(0)
   })
 

@@ -14,6 +14,7 @@ import {
   clearHiddenChannels,
   onStreamStateChange,
 } from '../util/stream'
+import { isOptedOut, setOptedOut } from '../telemetry/telemetry'
 import './Settings.css'
 
 export function Settings() {
@@ -24,6 +25,7 @@ export function Settings() {
   })
   const [autoSkip, setAutoSkip] = useState(() => isAutoSkipEnabled())
   const [hideBroken, setHideBroken] = useState(() => isHideBrokenStreamsEnabled())
+  const [shareStats, setShareStats] = useState(() => !isOptedOut())
   const [brokenCount, setBrokenCount] = useState(() => getBrokenCount())
   const [hiddenIds, setHiddenIds] = useState(() => [...getHiddenSet()])
   const [clearedNotice, setClearedNotice] = useState(false)
@@ -58,6 +60,11 @@ export function Settings() {
   const handleHideBrokenChange = (enabled: boolean) => {
     setHideBroken(enabled)
     setHideBrokenStreamsEnabled(enabled)
+  }
+
+  const handleShareStatsChange = (enabled: boolean) => {
+    setShareStats(enabled)
+    setOptedOut(!enabled)
   }
 
   const handleClearBrokenStreams = () => {
@@ -389,6 +396,75 @@ export function Settings() {
         </section>
 
         {/* About Section */}
+        {/* Privacy & usage statistics (ADR-0032, ADR-0047) */}
+        <section className="settings-card glass" data-testid="privacy-card">
+          <div className="settings-card__header">
+            <span className="settings-card__icon">🛡️</span>
+            <div>
+              <h3>Privacy & Usage Statistics</h3>
+              <p>What StreamLoom counts, what it never collects, and how to turn it off</p>
+            </div>
+          </div>
+          <div className="settings-card__body">
+            <div className="settings-item">
+              <div className="settings-item__info">
+                <strong>Share anonymous usage statistics</strong>
+                <span>
+                  Aggregate counts only — how many times the app was opened, a channel played or
+                  failed, how fast video started. No identifier of any kind. Off means nothing is
+                  sent at all.
+                </span>
+              </div>
+              <label className="toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={shareStats}
+                  onChange={(e) => handleShareStatsChange(e.target.checked)}
+                  aria-label="Share anonymous usage statistics"
+                />
+                <span className="toggle-slider" />
+              </label>
+            </div>
+            <div className="settings-item settings-item--stacked">
+              <div className="settings-item__info privacy-text">
+                <strong>What is collected</strong>
+                <span>
+                  Counts, in batches, with no way to tell one person from another: app opens (with a
+                  flag for the first open of the day, week or month, so users can be counted without
+                  naming any); a channel played, stopped or failed and which of its public streams
+                  it was; how long a channel was watched, as a range; whether a search found
+                  nothing; how long the catalogue, the guide and video took to appear, as ranges;
+                  and the country and region the request came from, derived at the edge and
+                  shown only when at least 20 people opened the app there that day.
+                </span>
+                <strong>What is never collected</strong>
+                <span>
+                  An IP address, a user agent, a referrer, a cookie, an install or session id, a
+                  hash of any of those, the text of a search, a timestamp from this device, your
+                  favourites, your history, or anything you type. There is no third-party
+                  analytics and no account.
+                </span>
+                <strong>How to opt out</strong>
+                <span>
+                  Turn the switch above off; the choice is kept on this device and nothing is sent
+                  while it is off. A browser that sends Global Privacy Control or Do Not Track is
+                  honoured automatically, at the server as well as here, with nothing written.
+                </span>
+                <span>
+                  <a
+                    href="https://github.com/StreamLoomAndroid/streamloom-android/blob/main/docs/PRIVACY_POLICY.md"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="privacy-link"
+                  >
+                    Read the full privacy policy ↗
+                  </a>
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section className="settings-card glass">
           <div className="settings-card__header">
             <span className="settings-card__icon">👤</span>

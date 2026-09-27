@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite'
-import type { Plugin } from 'vite'
+import type { Connect, Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 
 interface EdgeStreamsPayload {
@@ -395,11 +395,13 @@ function streamProxyPlugin(): Plugin {
       server.middlewares.use('/api/streams', streamsHandler)
       server.middlewares.use('/api/proxy', proxyHandler)
       server.middlewares.use('/api/icons', iconsHandler)
+      server.middlewares.use('/api/t', telemetryDevSink)
     },
     configurePreviewServer(server) {
       server.middlewares.use('/api/streams', streamsHandler)
       server.middlewares.use('/api/proxy', proxyHandler)
       server.middlewares.use('/api/icons', iconsHandler)
+      server.middlewares.use('/api/t', telemetryDevSink)
     },
   }
 }
@@ -436,8 +438,35 @@ function cataloguePreloadPlugin(): Plugin {
   }
 }
 
+/**
+ * Local stand-in for POST /api/t (ADR-0032). The real Function writes to an Analytics Engine
+ * binding the dev server does not have, so this answers the way the endpoint would to a client —
+ * 204 for a GPC/DNT request, 202 otherwise — and keeps nothing: no body is read, nothing is
+ * logged. Without it the SPA fallback would answer a beacon with index.html.
+ */
+const telemetryDevSink: Connect.NextHandleFunction = (req, res) => {
+  const optedOut = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value)?.trim() === '1'
+  const status = optedOut(req.headers['sec-gpc']) || optedOut(req.headers['dnt']) ? 204 : req.method === 'POST' ? 202 : 405
+  req.resume()
+  res.statusCode = status
+  res.setHeader('Cache-Control', 'no-store')
+  res.end()
+}
+
+/**
+ * The app version the telemetry batch carries (`a`, `APP_VERSION_RE`: a short token). The Pages
+ * build exposes the commit as `CF_PAGES_COMMIT_SHA`; a local build falls back to package.json.
+ */
+function appVersion(): string {
+  const sha = process.env.CF_PAGES_COMMIT_SHA
+  if (typeof sha === 'string' && /^[0-9a-f]{7,40}$/.test(sha)) return sha.slice(0, 7)
+  const version = process.env.npm_package_version
+  return typeof version === 'string' && /^[0-9A-Za-z][0-9A-Za-z.+-]{0,31}$/.test(version) ? version : 'dev'
+}
+
 export default defineConfig({
   envPrefix: ['VITE_', 'UPSTASH_'],
+  define: { __APP_VERSION__: JSON.stringify(appVersion()) },
   plugins: [
     react(),
     streamProxyPlugin(),

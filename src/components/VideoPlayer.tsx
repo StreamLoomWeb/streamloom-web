@@ -27,6 +27,9 @@ import {
   recordStreamFailure,
 } from '../util/streamFailure'
 import type { FailureClass } from '../util/streamFailure'
+import { beginPlay, endPlay, failPlay, markFirstFrame, stallEnd, stallStart } from '../telemetry/playSession'
+import { errorClassOfHls, errorClassOfMedia } from '../telemetry/errorClass'
+import type { ErrorClass } from '../../functions/api/_lib/telemetryContract'
 import { rememberBandwidth, startingBandwidth } from '../util/bandwidth'
 import { preconnectChannel } from '../util/preconnect'
 import { HandoffLoader } from '../util/handoffLoader'
@@ -165,13 +168,22 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
   const activeStreamIdxRef = useRef(activeStreamIdx)
   const isProxiedRef = useRef(isProxied)
   const channelStreamsRef = useRef(channelStreams)
+
+  // One telemetry play session per channel visit (ADR-0047): `play` names the first stream tried,
+  // `play_end` carries the watch-time bucket when the channel is left. Fire-and-forget; nothing
+  // here is awaited by playback.
+  useEffect(() => {
+    // The session itself starts in the attempt effect below, naming the stream actually tried
+    // first; leaving the channel is what ends it.
+    return () => endPlay()
+  }, [channel.id])
   const stallTimer = useRef<number | null>(null)
   const mediaRecoveryAttempts = useRef(0)
   const hasPlayedSuccessfully = useRef(false)
   /** When the last media byte arrived; playlist refreshes do not count. */
   const lastMediaByteAt = useRef(0)
   const switchChannelCleanlyRef = useRef<(target: EnrichedChannel) => void>(() => {})
-  const failoverToNextAttemptRef = useRef<(cause: FailureClass) => void>(() => {})
+  const failoverToNextAttemptRef = useRef<(cause: FailureClass, errorClass?: ErrorClass) => void>(() => {})
   const failureEvidenceRef = useRef<FailureEvidence | null>(null)
 
   /** Tears down the engine, keeping its bandwidth measurement for the next start. */
@@ -798,7 +810,7 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
     }
   }, [allChannels, switchChannelCleanly])
 
-  const failoverToNextAttempt = useCallback((cause: FailureClass) => {
+  const failoverToNextAttempt = useCallback((cause: FailureClass, errorClass?: ErrorClass) => {
     if (failoverTimer.current) {
       window.clearTimeout(failoverTimer.current)
       failoverTimer.current = null
@@ -825,6 +837,10 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
       failureEvidenceRef.current = evidence
     }
     evidence.verdicts.set(curIdx, cause)
+
+    // Telemetry (ADR-0032): a stream fault is counted once per stream per session; a network
+    // failure, a timeout or the watchdog is never reported, since it says nothing about the stream.
+    if (cause === 'stream') failPlay(currentChannel.id, curUrl, errorClass ?? 'other')
 
     // 1. If currently direct, retry via edge proxy
     if (!currentIsProxied && curUrl && !curUrl.startsWith('/api/proxy')) {
@@ -969,6 +985,9 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
       })
       return
     }
+    // No-op while a session for this channel is open, so a proxy retry or the next candidate
+    // does not count as a second `play`.
+    beginPlay(channel.id, rawUrl)
 
     let isDisposed = false
 
@@ -1014,6 +1033,8 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
         stallTimer.current = null
       }
       hasPlayedSuccessfully.current = true
+      markFirstFrame()
+      stallEnd()
       sessionStorage.removeItem('sl_autoskip_start')
       setIsBuffering(false)
       setIsSlowConnecting(false)
@@ -1251,12 +1272,12 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
                 mediaRecoveryAttempts.current++
                 hls.recoverMediaError()
               } else {
-                failoverToNextAttemptRef.current(classifyHlsError(data))
+                failoverToNextAttemptRef.current(classifyHlsError(data), errorClassOfHls(data))
               }
               break
             case Hls.ErrorTypes.NETWORK_ERROR:
             default:
-              failoverToNextAttemptRef.current(classifyHlsError(data))
+              failoverToNextAttemptRef.current(classifyHlsError(data), errorClassOfHls(data))
               break
           }
         }
@@ -1292,7 +1313,7 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
             window.clearTimeout(failoverTimer.current)
             failoverTimer.current = null
           }
-          failoverToNextAttemptRef.current(classifyMediaElementError(video.error?.code))
+          failoverToNextAttemptRef.current(classifyMediaElementError(video.error?.code), errorClassOfMedia(video.error?.code))
         }
       }
     }
@@ -1530,6 +1551,7 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
         onWaiting={(e) => {
           if (e.currentTarget.paused) return
           setIsBuffering(true)
+          if (hasPlayedSuccessfully.current) stallStart()
           if (hasPlayedSuccessfully.current && !stallTimer.current) {
             const since = performance.now()
             const checkStall = () => {
@@ -1568,6 +1590,8 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
             connectionTimeoutTimer.current = null
           }
           hasPlayedSuccessfully.current = true
+          markFirstFrame()
+          stallEnd()
           sessionStorage.removeItem('sl_autoskip_start')
           setIsBuffering(false)
           setIsSlowConnecting(false)

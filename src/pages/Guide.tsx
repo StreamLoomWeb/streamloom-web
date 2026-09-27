@@ -1,9 +1,10 @@
-import { useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useChannels, useFavourites } from '../hooks/useChannels'
 import { EpgGuide } from '../components/EpgGuide'
 import type { GuideFilters, GuideFilterState } from '../util/epgFilter'
 import { EMPTY_FILTER_STATE } from '../util/epgFilter'
 import { computeMatchSet, normalizeSearch } from '../util/searchText'
+import { trackGuideOpen, trackLatency } from '../telemetry/telemetry'
 import './Guide.css'
 
 /** Filter state survives navigating to the player and back. */
@@ -39,6 +40,19 @@ export function Guide() {
   const { channels, allChannels, categories, epgChannelIds, epgAvailable, refreshEpg, loading, generation } = useChannels()
   const { favouriteIds } = useFavourites()
   const [state, setState] = useState<GuideFilterState>(readInitialState)
+
+  // Telemetry (ADR-0047): one `guide_open` per visit, and how long the guide took to have
+  // channels on screen (perf `guide_open`, a bucket index). Fire-and-forget.
+  const openedAtRef = useRef<number | null>(null)
+  useEffect(() => {
+    openedAtRef.current = performance.now()
+    trackGuideOpen()
+  }, [])
+  useEffect(() => {
+    if (loading || channels.length === 0 || openedAtRef.current === null) return
+    trackLatency('guide_open', performance.now() - openedAtRef.current)
+    openedAtRef.current = null
+  }, [loading, channels.length])
 
   // Persist each field so a trip to the player does not reset the view.
   useEffect(() => {

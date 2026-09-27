@@ -336,3 +336,33 @@ input:checked + .toggle-slider:before {
   font-size: 0.85rem;
   letter-spacing: 0.02em;
 }
+
+/* Privacy & usage statistics (ADR-0032): plain text, stacked, readable on a TV. */
+.settings-item--stacked {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.privacy-text {
+  gap: 6px;
+}
+
+.privacy-text strong {
+  margin-top: 8px;
+}
+
+.privacy-text strong:first-child {
+  margin-top: 0;
+}
+
+.privacy-text span {
+  line-height: 1.55;
+  max-width: 72ch;
+}
+
+.privacy-link {
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

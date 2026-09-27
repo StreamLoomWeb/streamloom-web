@@ -39,3 +39,15 @@
 /api/picks/*
   X-Robots-Tag: noindex, nofollow
   Cache-Control: no-store
+
+# The owner's analytics read path (ADR-0047): per-identity, behind Access, never stored between
+# the Function and the browser. Same hygiene as /api/picks; the access control is the Access JWT
+# the Function verifies itself.
+/api/stats
+  X-Robots-Tag: noindex, nofollow
+  Cache-Control: no-store
+
+# Telemetry (ADR-0032): a write-only endpoint with no readable answer worth caching or indexing.
+/api/t
+  X-Robots-Tag: noindex, nofollow
+  Cache-Control: no-store

@@ -35,5 +35,26 @@
       "binding": "CATALOGUE_BUCKET",
       "bucket_name": "streamloom-catalogue"
     }
+  ],
+  // Telemetry (ADR-0032, ADR-0047, WO-22). Both bindings are Production-only in the dashboard;
+  // a Preview or a local run without them makes /api/t answer 503 and write nothing, and
+  // /api/stats answer with the source marked unavailable.
+  "analytics_engine_datasets": [
+    {
+      // /api/t writes one point per accepted event here; the dataset name is WAE_DATASET in
+      // functions/api/_lib/telemetryContract.ts and must not drift from it.
+      "binding": "TELEMETRY",
+      "dataset": "streamloom_telemetry"
+    }
+  ],
+  "d1_databases": [
+    {
+      // /api/stats reads the backend rollup's tables (D1_TABLES) for days older than the 90-day
+      // WAE window. Local dev uses a local SQLite file; the id below is a placeholder and only the
+      // dashboard binding's real UUID matters (README, "Telemetry").
+      "binding": "TELEMETRY_DB",
+      "database_name": "streamloom-telemetry",
+      "database_id": "00000000-0000-0000-0000-000000000000"
+    }
   ]
 }

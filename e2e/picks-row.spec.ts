@@ -128,7 +128,9 @@ test('pinned channels are shown, with the note and the no-stream state', async (
   // A pin with no stream is present, labelled, and not playable.
   await expect(row).toContainText('Channel 19')
   await expect(row).toContainText('No stream available')
-  await expect(row.getByRole('button', { name: 'Play Channel 19', exact: true })).toHaveCount(0)
+  // The card's own button stays in the DOM, disabled, for consistent layout and screen-reader
+  // semantics ("Ship web Phase 1 quick wins") — not removed.
+  await expect(row.getByRole('button', { name: 'Play Channel 19', exact: true })).toBeDisabled()
 })
 
 test('arrow-key navigation moves off a no-stream pin instead of snapping back to the first card', async ({
@@ -190,7 +192,8 @@ test('a pin not yet in the catalogue renders from its saved snapshot (ADR-0042)'
   // genuinely has none.
   await expect(row).toContainText('Not yet in the catalogue')
   await expect(row).not.toContainText('No stream available')
-  await expect(row.getByRole('button', { name: 'Play Brand New Channel', exact: true })).toHaveCount(0)
+  // Present, disabled: same reasoning as the no-stream case above.
+  await expect(row.getByRole('button', { name: 'Play Brand New Channel', exact: true })).toBeDisabled()
 })
 
 test('a fast-tracked pin renders as playable, not as an identity-only card (ADR-0043, WO-19)', async ({ page, context }) => {

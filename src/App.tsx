@@ -9,6 +9,7 @@ import { afterCatalogue } from './hooks/useChannels'
 import { connectionInfo } from './util/bandwidth'
 import { loadWatch } from './util/watchChunk'
 import { applyTvMode } from './util/tvMode'
+import { startTelemetry, trackLatency } from './telemetry/telemetry'
 
 // Runs once at module load, before the first paint: a TV browser's overscan
 // padding and type scale (see index.css) need to be in the initial CSSOM,
@@ -52,6 +53,22 @@ function usePrefetchPlayer() {
 }
 
 /*
+ * Telemetry (ADR-0032, ADR-0047): one `app_open` per page load and the time to a catalogue on
+ * screen, started once the first paint has happened. Every call is a queue push; the flush is a
+ * beacon on `pagehide`, so no user path ever waits on it.
+ */
+function useTelemetry() {
+  useEffect(() => {
+    const stop = afterCatalogue(() => trackLatency('catalogue_load', performance.now()))
+    const id = window.setTimeout(startTelemetry, 0)
+    return () => {
+      stop()
+      window.clearTimeout(id)
+    }
+  }, [])
+}
+
+/*
  * The picks portal (ADR-0033). Unlisted: nothing links to it, it is in no
  * sitemap, and `public/_headers` serves it `noindex` and `no-store`. Lazy so the
  * editor is a chunk of its own and never reaches a visitor who does not ask for
@@ -63,8 +80,16 @@ function usePrefetchPlayer() {
  */
 const Admin = lazy(() => import('./pages/Admin').then((m) => ({ default: m.Admin })))
 
+/*
+ * The owner's analytics dashboard (ADR-0047), under the same Access application as `/admin`
+ * (`admin/*`). Like the portal it holds no credential: everything comes from `/api/stats`, which
+ * verifies the Access JWT itself and answers 401 to anyone else.
+ */
+const Analytics = lazy(() => import('./pages/Analytics').then((m) => ({ default: m.Analytics })))
+
 export default function App() {
   usePrefetchPlayer()
+  useTelemetry()
   return (
     <BrowserRouter>
       <Routes>
@@ -94,6 +119,14 @@ export default function App() {
                   element={
                     <Suspense fallback={<div style={{ minHeight: '50dvh' }} />}>
                       <Admin />
+                    </Suspense>
+                  }
+                />
+                <Route
+                  path="/admin/analytics"
+                  element={
+                    <Suspense fallback={<div style={{ minHeight: '50dvh' }} />}>
+                      <Analytics />
                     </Suspense>
                   }
                 />

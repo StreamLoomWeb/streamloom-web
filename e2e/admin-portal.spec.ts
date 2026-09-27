@@ -136,7 +136,9 @@ test('build a group, add a channel, write a note, save', async ({ page, context 
   expect(state.saves).toHaveLength(1)
   expect(state.saves[0].body).toEqual({
     schema: 1,
-    groups: [{ title: 'Editor picks', items: [{ channelId: 'ch1.xx', note: 'Always on', rank: 0 }] }],
+    // A group created through the form always carries the limit shown in its own creation
+    // field (07818c6): the default 50 unless the admin changed it before clicking "Add group".
+    groups: [{ title: 'Editor picks', limit: 50, items: [{ channelId: 'ch1.xx', note: 'Always on', rank: 0 }] }],
   })
 })
 

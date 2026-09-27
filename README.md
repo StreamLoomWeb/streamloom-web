@@ -290,6 +290,69 @@ Then open `/admin`, sign in through Access, and save. A pin already in the live
 generation appears on the site within about a minute; one that is not yet
 published appears at the next sync, and the portal says which is which.
 
+## Telemetry and the analytics dashboard (ADR-0032, ADR-0047, WO-22)
+
+Aggregate counts with **no identifier of any kind**, opt-out. The browser client
+(`src/telemetry/`) batches a handful of events — `app_open` with period-first
+flags, `play`, `play_end`, `play_fail`, `guide_open`, `search` (only whether it
+found nothing), `perf` buckets — and posts them to `POST /api/t`
+(`functions/api/t.ts`), which validates them with a line-for-line port of the
+backend's `telemetry-contract.js` (`functions/api/_lib/telemetryContract.ts`,
+checked against `e2e/support/telemetry-golden.json`) and writes one Workers
+Analytics Engine data point per accepted event. `Sec-GPC: 1` or `DNT: 1` gets a
+204 and writes nothing; the IP is never read, logged or stored; country and
+region come from `request.cf` and fold under 20 opens a day. The owner reads it
+all at `/admin/analytics`, fed by `GET /api/stats` (`functions/api/stats.ts`),
+which sits behind the same Cloudflare Access application as `/admin` and
+verifies the Access JWT itself.
+
+Never sent, never stored: an IP, a user agent, a referrer, a cookie, an install
+or session id, a hash of any of those, the text of a search, or a client clock.
+Settings → *Privacy & Usage Statistics* holds the in-app opt-out and the plain
+description of what is and is not collected.
+
+### What the owner has to configure (once)
+
+1. **Analytics Engine binding.** Workers & Pages → `streamloomweb` → Settings →
+   Bindings → Add → Analytics Engine: variable name `TELEMETRY`, dataset
+   `streamloom_telemetry`. **Production only.**
+2. **D1 database and binding.** Create a D1 database named `streamloom-telemetry`
+   (the backend's rollup creates the tables and needs its UUID — see the backend's
+   `OWNER_SETUP.md`). Bind it here as `TELEMETRY_DB`. **Production only.**
+3. **Two Production-only variables for `/api/stats`:**
+   | Variable | Value |
+   |---|---|
+   | `CF_ACCOUNT_ID` | the Cloudflare account id (32 hex characters) |
+   | `CF_ANALYTICS_READ_TOKEN` | a Cloudflare API token scoped to **Account Analytics: Read**, as a *secret* |
+   Without them `/api/stats` still answers, with the Analytics Engine source
+   marked unavailable. Nothing here can write.
+4. **Extend the existing Access application** (the one for `/admin` and
+   `/api/picks`) with two more paths: `admin/*` and `api/stats*`. Same policy,
+   same AUD, no second application. `CF_ACCESS_TEAM_DOMAIN` / `CF_ACCESS_AUD`
+   already cover it.
+5. **One rate-limit rule** on `POST /api/t`: match by IP, 10 s period, threshold
+   30, action Block. It is the account's single Workers Free rate-limit rule; if
+   another Function already uses it, stop and say so rather than replacing it.
+6. **Redeploy Production** after all of the above. Pages snapshots bindings,
+   variables and secrets per deployment: a change made in the dashboard reaches
+   only the *next* deployment.
+
+### Checks after the first deploy
+
+- Open the site with a browser that sends GPC (or `curl -X POST -H 'Sec-GPC: 1'
+  https://<site>/api/t`): expect `204`, and no point in the dataset.
+- Post the golden fixture's `validBatch` with a live channel id: expect `202`,
+  then `SELECT blob2, SUM(_sample_interval) FROM streamloom_telemetry WHERE
+  timestamp > NOW() - INTERVAL '1' HOUR GROUP BY blob2` in the Analytics Engine
+  SQL API shows one row per event.
+- Open `/admin/analytics` signed in through Access. The *SQL sent* panel at the
+  bottom shows the exact dialect that answered; copy it into the backend issue
+  that tracks WO-22's report-back (the rollup depends on the same dialect).
+
+`wrangler pages dev` reads the two bindings from `wrangler.jsonc` for a local
+run; the D1 id there is a placeholder for the local SQLite file and does not
+matter.
+
 ### Fast-track dispatch (ADR-0043, WO-19)
 
 A save that pins a genuinely new channel — one not already in the live

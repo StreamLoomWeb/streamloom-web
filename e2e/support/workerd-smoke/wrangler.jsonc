@@ -9,5 +9,12 @@
   "compatibility_date": "2026-09-10",
   "assets": {
     "directory": "./public"
-  }
+  },
+  // Telemetry smoke (WO-22): a local Analytics Engine dataset and an empty local R2 bucket, so
+  // /api/t runs its real write and read paths under workerd. `wrangler pages dev` only reads
+  // bindings from a config file that names `pages_build_output_dir`, which is fine here because
+  // this file is never deployed (see the comment above).
+  "pages_build_output_dir": "./public",
+  "analytics_engine_datasets": [{ "binding": "TELEMETRY", "dataset": "streamloom_telemetry" }],
+  "r2_buckets": [{ "binding": "CATALOGUE_BUCKET", "bucket_name": "streamloom-catalogue-smoke" }]
 }

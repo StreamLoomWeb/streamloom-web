@@ -1,0 +1,3360 @@
+{
+  "version": 1,
+  "constants": {
+    "APP_OPEN_FLAGS": [
+      "d",
+      "w",
+      "m",
+      "n"
+    ],
+    "BUCKET_EDGES": {
+      "latency": [
+        100,
+        250,
+        500,
+        1000,
+        2000,
+        4000,
+        8000,
+        15000
+      ],
+      "watch": [
+        1,
+        10,
+        60,
+        300,
+        900,
+        3600
+      ],
+      "ratio": [
+        0.001,
+        0.005,
+        0.01,
+        0.02,
+        0.05,
+        0.1,
+        0.2
+      ]
+    },
+    "CHANNEL_ID_MAX": 64,
+    "D1_DDL": [
+      "CREATE TABLE IF NOT EXISTS daily_metrics (day TEXT NOT NULL, platform TEXT NOT NULL, event TEXT NOT NULL, bucket INTEGER NOT NULL, flag TEXT NOT NULL, count INTEGER NOT NULL, PRIMARY KEY (day, platform, event, bucket, flag))",
+      "CREATE TABLE IF NOT EXISTS daily_hours (day TEXT NOT NULL, platform TEXT NOT NULL, hour INTEGER NOT NULL, event TEXT NOT NULL, count INTEGER NOT NULL, PRIMARY KEY (day, platform, hour, event))",
+      "CREATE TABLE IF NOT EXISTS daily_geo (day TEXT NOT NULL, platform TEXT NOT NULL, country TEXT NOT NULL, region TEXT NOT NULL, app_opens INTEGER NOT NULL, plays INTEGER NOT NULL, play_fails INTEGER NOT NULL, PRIMARY KEY (day, platform, country, region))",
+      "CREATE TABLE IF NOT EXISTS daily_channels (day TEXT NOT NULL, platform TEXT NOT NULL, channel_id TEXT NOT NULL, country TEXT NOT NULL, plays INTEGER NOT NULL, play_fails INTEGER NOT NULL, play_ends INTEGER NOT NULL, watch_est_min REAL NOT NULL, PRIMARY KEY (day, platform, channel_id, country))",
+      "CREATE TABLE IF NOT EXISTS daily_perf (day TEXT NOT NULL, platform TEXT NOT NULL, metric TEXT NOT NULL, bucket INTEGER NOT NULL, count INTEGER NOT NULL, PRIMARY KEY (day, platform, metric, bucket))",
+      "CREATE TABLE IF NOT EXISTS rollup_runs (day TEXT NOT NULL, ran_at TEXT NOT NULL, contract INTEGER NOT NULL, points INTEGER NOT NULL, rows_written INTEGER NOT NULL, reports_listed INTEGER NOT NULL, PRIMARY KEY (day))"
+    ],
+    "D1_TABLES": [
+      {
+        "name": "daily_metrics",
+        "columns": [
+          "day",
+          "platform",
+          "event",
+          "bucket",
+          "flag",
+          "count"
+        ],
+        "types": [
+          "TEXT",
+          "TEXT",
+          "TEXT",
+          "INTEGER",
+          "TEXT",
+          "INTEGER"
+        ],
+        "pk": [
+          "day",
+          "platform",
+          "event",
+          "bucket",
+          "flag"
+        ]
+      },
+      {
+        "name": "daily_hours",
+        "columns": [
+          "day",
+          "platform",
+          "hour",
+          "event",
+          "count"
+        ],
+        "types": [
+          "TEXT",
+          "TEXT",
+          "INTEGER",
+          "TEXT",
+          "INTEGER"
+        ],
+        "pk": [
+          "day",
+          "platform",
+          "hour",
+          "event"
+        ]
+      },
+      {
+        "name": "daily_geo",
+        "columns": [
+          "day",
+          "platform",
+          "country",
+          "region",
+          "app_opens",
+          "plays",
+          "play_fails"
+        ],
+        "types": [
+          "TEXT",
+          "TEXT",
+          "TEXT",
+          "TEXT",
+          "INTEGER",
+          "INTEGER",
+          "INTEGER"
+        ],
+        "pk": [
+          "day",
+          "platform",
+          "country",
+          "region"
+        ]
+      },
+      {
+        "name": "daily_channels",
+        "columns": [
+          "day",
+          "platform",
+          "channel_id",
+          "country",
+          "plays",
+          "play_fails",
+          "play_ends",
+          "watch_est_min"
+        ],
+        "types": [
+          "TEXT",
+          "TEXT",
+          "TEXT",
+          "TEXT",
+          "INTEGER",
+          "INTEGER",
+          "INTEGER",
+          "REAL"
+        ],
+        "pk": [
+          "day",
+          "platform",
+          "channel_id",
+          "country"
+        ]
+      },
+      {
+        "name": "daily_perf",
+        "columns": [
+          "day",
+          "platform",
+          "metric",
+          "bucket",
+          "count"
+        ],
+        "types": [
+          "TEXT",
+          "TEXT",
+          "TEXT",
+          "INTEGER",
+          "INTEGER"
+        ],
+        "pk": [
+          "day",
+          "platform",
+          "metric",
+          "bucket"
+        ]
+      },
+      {
+        "name": "rollup_runs",
+        "columns": [
+          "day",
+          "ran_at",
+          "contract",
+          "points",
+          "rows_written",
+          "reports_listed"
+        ],
+        "types": [
+          "TEXT",
+          "TEXT",
+          "INTEGER",
+          "INTEGER",
+          "INTEGER",
+          "INTEGER"
+        ],
+        "pk": [
+          "day"
+        ]
+      }
+    ],
+    "ERROR_CLASSES": [
+      "http_4xx",
+      "http_5xx",
+      "manifest",
+      "codec",
+      "drm",
+      "other"
+    ],
+    "EVENTS": [
+      "app_open",
+      "play",
+      "play_end",
+      "play_fail",
+      "guide_open",
+      "search",
+      "perf"
+    ],
+    "EVENT_FIELDS": {
+      "app_open": {
+        "required": [
+          "f"
+        ],
+        "optional": []
+      },
+      "play": {
+        "required": [
+          "c",
+          "s"
+        ],
+        "optional": []
+      },
+      "play_end": {
+        "required": [
+          "c",
+          "s",
+          "d"
+        ],
+        "optional": []
+      },
+      "play_fail": {
+        "required": [
+          "c",
+          "s",
+          "k"
+        ],
+        "optional": []
+      },
+      "guide_open": {
+        "required": [],
+        "optional": []
+      },
+      "search": {
+        "required": [
+          "z"
+        ],
+        "optional": []
+      },
+      "perf": {
+        "required": [
+          "k",
+          "d"
+        ],
+        "optional": []
+      }
+    },
+    "FOLDED_COUNTRY": "ZZ",
+    "FOLDED_REGION": "*",
+    "K_ANON": 20,
+    "LATENCY_EDGES_MS": [
+      100,
+      250,
+      500,
+      1000,
+      2000,
+      4000,
+      8000,
+      15000
+    ],
+    "MAX_BATCH_BYTES": 2048,
+    "MAX_BATCH_EVENTS": 20,
+    "PERF_METRICS": [
+      "catalogue_load",
+      "guide_open",
+      "video_start_time",
+      "rebuffer_ratio"
+    ],
+    "PERF_METRIC_KIND": {
+      "catalogue_load": "latency",
+      "guide_open": "latency",
+      "video_start_time": "latency",
+      "rebuffer_ratio": "ratio"
+    },
+    "PLATFORMS": [
+      "web",
+      "android"
+    ],
+    "PLAY_FAIL_K": 10,
+    "PLAY_FAIL_MIN_HOURS": 2,
+    "RATIO_EDGES": [
+      0.001,
+      0.005,
+      0.01,
+      0.02,
+      0.05,
+      0.1,
+      0.2
+    ],
+    "REPORTS_CACHE_CONTROL": "public, max-age=300",
+    "REPORTS_KEY": "catalogue/health/reports.json",
+    "REPORTS_N": 100,
+    "REPORTS_SCHEMA": 1,
+    "REPORTS_WINDOW_HOURS": 24,
+    "STREAM_KEY_ALGORITHM": "sha256(url), lower-case hex, first 16 characters",
+    "TELEMETRY_VERSION": 1,
+    "TOP_CHANNELS_N": 500,
+    "WAE_DATASET": "streamloom_telemetry",
+    "WAE_LAYOUT": {
+      "index1": "platform",
+      "blob1": "platform",
+      "blob2": "event",
+      "blob3": "appVersion",
+      "blob4": "country",
+      "blob5": "region",
+      "blob6": "channelId",
+      "blob7": "streamKey",
+      "blob8": "errorClass",
+      "blob9": "perfMetric",
+      "blob10": "flags",
+      "double1": "bucket",
+      "double2": "one",
+      "double3": "zeroResults",
+      "double4": "version"
+    },
+    "WATCH_BUCKET_EST_MIN": [
+      0,
+      0.09,
+      0.58,
+      3,
+      10,
+      37.5,
+      60
+    ],
+    "WATCH_EDGES_S": [
+      1,
+      10,
+      60,
+      300,
+      900,
+      3600
+    ]
+  },
+  "regexes": {
+    "APP_VERSION_RE": "^[0-9A-Za-z][0-9A-Za-z.+-]{0,31}$",
+    "CHANNEL_ID_RE": "^[A-Za-z0-9][A-Za-z0-9._@-]*$",
+    "COUNTRY_RE": "^[A-Z]{2}$",
+    "REGION_RE": "^[A-Z0-9]{1,3}$|^\\*$",
+    "STREAM_KEY_RE": "^[0-9a-f]{16}$"
+  },
+  "examples": {
+    "validBatch": {
+      "batch": {
+        "v": 1,
+        "p": "web",
+        "a": "1.4.0",
+        "b": [
+          {
+            "e": "app_open",
+            "f": "dw"
+          },
+          {
+            "e": "play",
+            "c": "AlphaNews.in",
+            "s": "12f5c541c54b864c"
+          },
+          {
+            "e": "play_end",
+            "c": "AlphaNews.in",
+            "s": "12f5c541c54b864c",
+            "d": 3
+          },
+          {
+            "e": "play_fail",
+            "c": "Gamma.us",
+            "s": "2df0f31ad126fe6b",
+            "k": "http_5xx"
+          },
+          {
+            "e": "guide_open"
+          },
+          {
+            "e": "search",
+            "z": 1
+          },
+          {
+            "e": "perf",
+            "k": "video_start_time",
+            "d": 4
+          },
+          {
+            "e": "perf",
+            "k": "rebuffer_ratio",
+            "d": 0
+          }
+        ]
+      },
+      "result": {
+        "ok": true,
+        "platform": "web",
+        "appVersion": "1.4.0",
+        "events": [
+          {
+            "e": "app_open",
+            "f": "dw"
+          },
+          {
+            "e": "play",
+            "c": "AlphaNews.in",
+            "s": "12f5c541c54b864c"
+          },
+          {
+            "e": "play_end",
+            "c": "AlphaNews.in",
+            "s": "12f5c541c54b864c",
+            "d": 3
+          },
+          {
+            "e": "play_fail",
+            "c": "Gamma.us",
+            "s": "2df0f31ad126fe6b",
+            "k": "http_5xx"
+          },
+          {
+            "e": "guide_open"
+          },
+          {
+            "e": "search",
+            "z": 1
+          },
+          {
+            "e": "perf",
+            "k": "video_start_time",
+            "d": 4
+          },
+          {
+            "e": "perf",
+            "k": "rebuffer_ratio",
+            "d": 0
+          }
+        ],
+        "dropped": 0
+      }
+    },
+    "droppedChannel": {
+      "batch": {
+        "v": 1,
+        "p": "web",
+        "a": "1.0",
+        "b": [
+          {
+            "e": "play",
+            "c": "Unknown.xx",
+            "s": "12f5c541c54b864c"
+          },
+          {
+            "e": "guide_open"
+          }
+        ]
+      },
+      "activeChannelIds": [
+        "AlphaNews.in"
+      ],
+      "result": {
+        "ok": true,
+        "platform": "web",
+        "appVersion": "1.0",
+        "events": [
+          {
+            "e": "guide_open"
+          }
+        ],
+        "dropped": 1
+      }
+    },
+    "refusedBatches": [
+      {
+        "why": "over the event cap",
+        "batch": {
+          "v": 1,
+          "p": "web",
+          "a": "1.0",
+          "b": [
+            {
+              "e": "guide_open"
+            },
+            {
+              "e": "guide_open"
+            },
+            {
+              "e": "guide_open"
+            },
+            {
+              "e": "guide_open"
+            },
+            {
+              "e": "guide_open"
+            },
+            {
+              "e": "guide_open"
+            },
+            {
+              "e": "guide_open"
+            },
+            {
+              "e": "guide_open"
+            },
+            {
+              "e": "guide_open"
+            },
+            {
+              "e": "guide_open"
+            },
+            {
+              "e": "guide_open"
+            },
+            {
+              "e": "guide_open"
+            },
+            {
+              "e": "guide_open"
+            },
+            {
+              "e": "guide_open"
+            },
+            {
+              "e": "guide_open"
+            },
+            {
+              "e": "guide_open"
+            },
+            {
+              "e": "guide_open"
+            },
+            {
+              "e": "guide_open"
+            },
+            {
+              "e": "guide_open"
+            },
+            {
+              "e": "guide_open"
+            },
+            {
+              "e": "guide_open"
+            }
+          ]
+        },
+        "result": {
+          "ok": false,
+          "reason": "over 20 events"
+        }
+      },
+      {
+        "why": "over the byte cap",
+        "batch": {
+          "v": 1,
+          "p": "web",
+          "a": "1.0",
+          "b": [
+            {
+              "e": "play",
+              "c": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "s": "12f5c541c54b864c"
+            },
+            {
+              "e": "play",
+              "c": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "s": "12f5c541c54b864c"
+            },
+            {
+              "e": "play",
+              "c": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "s": "12f5c541c54b864c"
+            },
+            {
+              "e": "play",
+              "c": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "s": "12f5c541c54b864c"
+            },
+            {
+              "e": "play",
+              "c": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "s": "12f5c541c54b864c"
+            },
+            {
+              "e": "play",
+              "c": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "s": "12f5c541c54b864c"
+            },
+            {
+              "e": "play",
+              "c": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "s": "12f5c541c54b864c"
+            },
+            {
+              "e": "play",
+              "c": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "s": "12f5c541c54b864c"
+            },
+            {
+              "e": "play",
+              "c": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "s": "12f5c541c54b864c"
+            },
+            {
+              "e": "play",
+              "c": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "s": "12f5c541c54b864c"
+            },
+            {
+              "e": "play",
+              "c": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "s": "12f5c541c54b864c"
+            },
+            {
+              "e": "play",
+              "c": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "s": "12f5c541c54b864c"
+            },
+            {
+              "e": "play",
+              "c": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "s": "12f5c541c54b864c"
+            },
+            {
+              "e": "play",
+              "c": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "s": "12f5c541c54b864c"
+            },
+            {
+              "e": "play",
+              "c": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "s": "12f5c541c54b864c"
+            },
+            {
+              "e": "play",
+              "c": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "s": "12f5c541c54b864c"
+            },
+            {
+              "e": "play",
+              "c": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "s": "12f5c541c54b864c"
+            },
+            {
+              "e": "play",
+              "c": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "s": "12f5c541c54b864c"
+            },
+            {
+              "e": "play",
+              "c": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "s": "12f5c541c54b864c"
+            },
+            {
+              "e": "play",
+              "c": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+              "s": "12f5c541c54b864c"
+            }
+          ]
+        },
+        "result": {
+          "ok": false,
+          "reason": "over 2048 bytes"
+        }
+      },
+      {
+        "why": "an unknown event",
+        "batch": {
+          "v": 1,
+          "p": "web",
+          "a": "1.0",
+          "b": [
+            {
+              "e": "pageview"
+            }
+          ]
+        },
+        "result": {
+          "ok": false,
+          "reason": "unknown event \"pageview\""
+        }
+      },
+      {
+        "why": "a search that carries its query",
+        "batch": {
+          "v": 1,
+          "p": "web",
+          "a": "1.0",
+          "b": [
+            {
+              "e": "search",
+              "z": 0,
+              "q": "news"
+            }
+          ]
+        },
+        "result": {
+          "ok": false,
+          "reason": "search does not carry \"q\""
+        }
+      },
+      {
+        "why": "a bad channel id",
+        "batch": {
+          "v": 1,
+          "p": "web",
+          "a": "1.0",
+          "b": [
+            {
+              "e": "play",
+              "c": "../etc",
+              "s": "12f5c541c54b864c"
+            }
+          ]
+        },
+        "result": {
+          "ok": false,
+          "reason": "play: bad channel id"
+        }
+      },
+      {
+        "why": "a bad stream key",
+        "batch": {
+          "v": 1,
+          "p": "web",
+          "a": "1.0",
+          "b": [
+            {
+              "e": "play",
+              "c": "AlphaNews.in",
+              "s": "https://example.test/alpha.m3u8"
+            }
+          ]
+        },
+        "result": {
+          "ok": false,
+          "reason": "play: bad stream key"
+        }
+      },
+      {
+        "why": "an unknown top-level field",
+        "batch": {
+          "v": 1,
+          "p": "web",
+          "a": "1.0",
+          "b": [
+            {
+              "e": "guide_open"
+            }
+          ],
+          "id": "abc"
+        },
+        "result": {
+          "ok": false,
+          "reason": "unknown field \"id\""
+        }
+      },
+      {
+        "why": "another version",
+        "batch": {
+          "v": 2,
+          "p": "web",
+          "a": "1.0",
+          "b": [
+            {
+              "e": "guide_open"
+            }
+          ]
+        },
+        "result": {
+          "ok": false,
+          "reason": "version 2 is not 1"
+        }
+      },
+      {
+        "why": "a network error reported as a stream fault",
+        "batch": {
+          "v": 1,
+          "p": "android",
+          "a": "2.1.3",
+          "b": [
+            {
+              "e": "play_fail",
+              "c": "AlphaNews.in",
+              "s": "12f5c541c54b864c",
+              "k": "timeout"
+            }
+          ]
+        },
+        "result": {
+          "ok": false,
+          "reason": "play_fail: unknown kind \"timeout\""
+        }
+      },
+      {
+        "why": "bad flags",
+        "batch": {
+          "v": 1,
+          "p": "web",
+          "a": "1.0",
+          "b": [
+            {
+              "e": "app_open",
+              "f": "x"
+            }
+          ]
+        },
+        "result": {
+          "ok": false,
+          "reason": "app_open: bad flags"
+        }
+      },
+      {
+        "why": "a bucket past the last edge",
+        "batch": {
+          "v": 1,
+          "p": "web",
+          "a": "1.0",
+          "b": [
+            {
+              "e": "perf",
+              "k": "video_start_time",
+              "d": 9
+            }
+          ]
+        },
+        "result": {
+          "ok": false,
+          "reason": "perf: bucket out of range"
+        }
+      },
+      {
+        "why": "a client clock",
+        "batch": {
+          "v": 1,
+          "p": "web",
+          "a": "1.0",
+          "b": [
+            {
+              "e": "guide_open",
+              "t": 1758931200
+            }
+          ]
+        },
+        "result": {
+          "ok": false,
+          "reason": "guide_open does not carry \"t\""
+        }
+      },
+      {
+        "why": "no events",
+        "batch": {
+          "v": 1,
+          "p": "web",
+          "a": "1.0",
+          "b": []
+        },
+        "result": {
+          "ok": false,
+          "reason": "no events"
+        }
+      }
+    ],
+    "appOpenFlags": [
+      {
+        "last": null,
+        "now": "2026-09-26T10:00:00Z",
+        "flags": "dwmn",
+        "next": {
+          "day": "2026-09-26",
+          "week": "2026-W39",
+          "month": "2026-09"
+        }
+      },
+      {
+        "last": {
+          "day": "2026-09-26",
+          "week": "2026-W39",
+          "month": "2026-09"
+        },
+        "now": "2026-09-26T18:00:00Z",
+        "flags": "",
+        "next": {
+          "day": "2026-09-26",
+          "week": "2026-W39",
+          "month": "2026-09"
+        }
+      },
+      {
+        "last": {
+          "day": "2026-09-26",
+          "week": "2026-W39",
+          "month": "2026-09"
+        },
+        "now": "2026-09-27T01:00:00Z",
+        "flags": "d",
+        "next": {
+          "day": "2026-09-27",
+          "week": "2026-W39",
+          "month": "2026-09"
+        }
+      },
+      {
+        "last": {
+          "day": "2026-09-27",
+          "week": "2026-W39",
+          "month": "2026-09"
+        },
+        "now": "2026-09-28T01:00:00Z",
+        "flags": "dw",
+        "next": {
+          "day": "2026-09-28",
+          "week": "2026-W40",
+          "month": "2026-09"
+        }
+      },
+      {
+        "last": {
+          "day": "2026-09-30",
+          "week": "2026-W40",
+          "month": "2026-09"
+        },
+        "now": "2026-10-01T00:30:00Z",
+        "flags": "dm",
+        "next": {
+          "day": "2026-10-01",
+          "week": "2026-W40",
+          "month": "2026-10"
+        }
+      },
+      {
+        "last": {
+          "day": "2025-12-31",
+          "week": "2026-W01",
+          "month": "2025-12"
+        },
+        "now": "2026-01-01T09:00:00Z",
+        "flags": "dm",
+        "next": {
+          "day": "2026-01-01",
+          "week": "2026-W01",
+          "month": "2026-01"
+        }
+      }
+    ],
+    "waePoints": [
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "app_open",
+          "1.4.0",
+          "IN",
+          "MH",
+          "",
+          "",
+          "",
+          "",
+          "dw"
+        ],
+        "doubles": [
+          -1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "play",
+          "1.4.0",
+          "IN",
+          "MH",
+          "AlphaNews.in",
+          "12f5c541c54b864c",
+          "",
+          "",
+          ""
+        ],
+        "doubles": [
+          -1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "play_end",
+          "1.4.0",
+          "IN",
+          "MH",
+          "AlphaNews.in",
+          "12f5c541c54b864c",
+          "",
+          "",
+          ""
+        ],
+        "doubles": [
+          3,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "play_fail",
+          "1.4.0",
+          "IN",
+          "MH",
+          "Gamma.us",
+          "2df0f31ad126fe6b",
+          "http_5xx",
+          "",
+          ""
+        ],
+        "doubles": [
+          -1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "guide_open",
+          "1.4.0",
+          "IN",
+          "MH",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        "doubles": [
+          -1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "search",
+          "1.4.0",
+          "IN",
+          "MH",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        "doubles": [
+          -1,
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "perf",
+          "1.4.0",
+          "IN",
+          "MH",
+          "",
+          "",
+          "",
+          "video_start_time",
+          ""
+        ],
+        "doubles": [
+          4,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "perf",
+          "1.4.0",
+          "IN",
+          "MH",
+          "",
+          "",
+          "",
+          "rebuffer_ratio",
+          ""
+        ],
+        "doubles": [
+          0,
+          1,
+          0,
+          1
+        ]
+      }
+    ],
+    "streamKeys": {
+      "https://example.test/alpha.m3u8": "12f5c541c54b864c"
+    },
+    "bucketLabels": {
+      "latency": [
+        "<100 ms",
+        "100-250 ms",
+        "250-500 ms",
+        "500 ms-1 s",
+        "1-2 s",
+        "2-4 s",
+        "4-8 s",
+        "8-15 s",
+        ">=15 s"
+      ],
+      "watch": [
+        "<1 s",
+        "1-10 s",
+        "10 s-1 min",
+        "1-5 min",
+        "5-15 min",
+        "15-60 min",
+        ">=60 min"
+      ],
+      "ratio": [
+        "<0.1%",
+        "0.1-0.5%",
+        "0.5-1%",
+        "1-2%",
+        "2-5%",
+        "5-10%",
+        "10-20%",
+        ">=20%"
+      ]
+    }
+  },
+  "queries": {
+    "metrics": "/* streamloom:metrics */\nSELECT blob1 AS platform, blob2 AS event, blob10 AS flags, blob8 AS error_class, double1 AS bucket, double3 AS zero,\n       SUM(_sample_interval) AS n\nFROM streamloom_telemetry\nWHERE timestamp >= toDateTime('2026-09-26 00:00:00') AND timestamp < toDateTime('2026-09-27 00:00:00')\nGROUP BY platform, event, flags, error_class, bucket, zero",
+    "hours": "/* streamloom:hours */\nSELECT blob1 AS platform, blob2 AS event, toStartOfInterval(timestamp, INTERVAL '1' HOUR) AS hour, SUM(_sample_interval) AS n\nFROM streamloom_telemetry\nWHERE timestamp >= toDateTime('2026-09-26 00:00:00') AND timestamp < toDateTime('2026-09-27 00:00:00') AND blob2 IN ('app_open', 'play')\nGROUP BY platform, event, hour",
+    "geo": "/* streamloom:geo */\nSELECT blob1 AS platform, blob4 AS country, blob5 AS region, blob2 AS event, SUM(_sample_interval) AS n\nFROM streamloom_telemetry\nWHERE timestamp >= toDateTime('2026-09-26 00:00:00') AND timestamp < toDateTime('2026-09-27 00:00:00') AND blob2 IN ('app_open', 'play', 'play_fail')\nGROUP BY platform, country, region, event",
+    "channels": "/* streamloom:channels */\nSELECT blob1 AS platform, blob6 AS channel_id, blob4 AS country, blob2 AS event, double1 AS bucket, SUM(_sample_interval) AS n\nFROM streamloom_telemetry\nWHERE timestamp >= toDateTime('2026-09-26 00:00:00') AND timestamp < toDateTime('2026-09-27 00:00:00') AND blob2 IN ('play', 'play_fail', 'play_end')\nGROUP BY platform, channel_id, country, event, bucket\nORDER BY n DESC\nLIMIT 9000",
+    "perf": "/* streamloom:perf */\nSELECT blob1 AS platform, blob9 AS metric, double1 AS bucket, SUM(_sample_interval) AS n\nFROM streamloom_telemetry\nWHERE timestamp >= toDateTime('2026-09-26 00:00:00') AND timestamp < toDateTime('2026-09-27 00:00:00') AND blob2 = 'perf'\nGROUP BY platform, metric, bucket",
+    "health": "/* streamloom:health */\nSELECT blob7 AS stream_key, blob6 AS channel_id, toStartOfInterval(timestamp, INTERVAL '1' HOUR) AS hour, SUM(_sample_interval) AS n\nFROM streamloom_telemetry\nWHERE blob2 = 'play_fail' AND timestamp > NOW() - INTERVAL '24' HOUR\nGROUP BY stream_key, channel_id, hour"
+  },
+  "rollup": {
+    "day": "2026-09-26",
+    "points": [
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "app_open",
+          "1.4.0",
+          "IN",
+          "MH",
+          "",
+          "",
+          "",
+          "",
+          "dwmn"
+        ],
+        "doubles": [
+          -1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "app_open",
+          "1.4.0",
+          "IN",
+          "MH",
+          "",
+          "",
+          "",
+          "",
+          "dw"
+        ],
+        "doubles": [
+          -1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "app_open",
+          "1.4.0",
+          "IN",
+          "MH",
+          "",
+          "",
+          "",
+          "",
+          "d"
+        ],
+        "doubles": [
+          -1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "app_open",
+          "1.4.0",
+          "IN",
+          "MH",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        "doubles": [
+          -1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "app_open",
+          "1.4.0",
+          "IN",
+          "KA",
+          "",
+          "",
+          "",
+          "",
+          "d"
+        ],
+        "doubles": [
+          -1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "app_open",
+          "1.4.0",
+          "IN",
+          "GA",
+          "",
+          "",
+          "",
+          "",
+          "d"
+        ],
+        "doubles": [
+          -1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "android"
+        ],
+        "blobs": [
+          "android",
+          "app_open",
+          "2.1.3",
+          "US",
+          "CA",
+          "",
+          "",
+          "",
+          "",
+          "dm"
+        ],
+        "doubles": [
+          -1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "android"
+        ],
+        "blobs": [
+          "android",
+          "app_open",
+          "2.1.3",
+          "NP",
+          "BA",
+          "",
+          "",
+          "",
+          "",
+          "dn"
+        ],
+        "doubles": [
+          -1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "play",
+          "1.4.0",
+          "IN",
+          "MH",
+          "AlphaNews.in",
+          "12f5c541c54b864c",
+          "",
+          "",
+          ""
+        ],
+        "doubles": [
+          -1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "play",
+          "1.4.0",
+          "IN",
+          "KA",
+          "AlphaNews.in",
+          "12f5c541c54b864c",
+          "",
+          "",
+          ""
+        ],
+        "doubles": [
+          -1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "play",
+          "1.4.0",
+          "IN",
+          "MH",
+          "BetaSports.in",
+          "4fb25a5c699457a3",
+          "",
+          "",
+          ""
+        ],
+        "doubles": [
+          -1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "play",
+          "1.4.0",
+          "IN",
+          "GA",
+          "Delta.in",
+          "d991452ae6a6a604",
+          "",
+          "",
+          ""
+        ],
+        "doubles": [
+          -1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "android"
+        ],
+        "blobs": [
+          "android",
+          "play",
+          "2.1.3",
+          "US",
+          "CA",
+          "Gamma.us",
+          "2df0f31ad126fe6b",
+          "",
+          "",
+          ""
+        ],
+        "doubles": [
+          -1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "android"
+        ],
+        "blobs": [
+          "android",
+          "play",
+          "2.1.3",
+          "NP",
+          "BA",
+          "PinnedOne.in",
+          "860efbe15d9b0963",
+          "",
+          "",
+          ""
+        ],
+        "doubles": [
+          -1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "play_end",
+          "1.4.0",
+          "IN",
+          "MH",
+          "AlphaNews.in",
+          "12f5c541c54b864c",
+          "",
+          "",
+          ""
+        ],
+        "doubles": [
+          0,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "play_end",
+          "1.4.0",
+          "IN",
+          "MH",
+          "AlphaNews.in",
+          "12f5c541c54b864c",
+          "",
+          "",
+          ""
+        ],
+        "doubles": [
+          3,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "play_end",
+          "1.4.0",
+          "IN",
+          "MH",
+          "AlphaNews.in",
+          "12f5c541c54b864c",
+          "",
+          "",
+          ""
+        ],
+        "doubles": [
+          5,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "play_end",
+          "1.4.0",
+          "IN",
+          "MH",
+          "BetaSports.in",
+          "4fb25a5c699457a3",
+          "",
+          "",
+          ""
+        ],
+        "doubles": [
+          6,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "android"
+        ],
+        "blobs": [
+          "android",
+          "play_end",
+          "2.1.3",
+          "US",
+          "CA",
+          "Gamma.us",
+          "2df0f31ad126fe6b",
+          "",
+          "",
+          ""
+        ],
+        "doubles": [
+          1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "android"
+        ],
+        "blobs": [
+          "android",
+          "play_end",
+          "2.1.3",
+          "US",
+          "CA",
+          "Gamma.us",
+          "2df0f31ad126fe6b",
+          "",
+          "",
+          ""
+        ],
+        "doubles": [
+          2,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "android"
+        ],
+        "blobs": [
+          "android",
+          "play_end",
+          "2.1.3",
+          "US",
+          "CA",
+          "Gamma.us",
+          "2df0f31ad126fe6b",
+          "",
+          "",
+          ""
+        ],
+        "doubles": [
+          4,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "android"
+        ],
+        "blobs": [
+          "android",
+          "play_fail",
+          "2.1.3",
+          "US",
+          "CA",
+          "Gamma.us",
+          "2df0f31ad126fe6b",
+          "http_5xx",
+          "",
+          ""
+        ],
+        "doubles": [
+          -1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "android"
+        ],
+        "blobs": [
+          "android",
+          "play_fail",
+          "2.1.3",
+          "US",
+          "CA",
+          "Gamma.us",
+          "2df0f31ad126fe6b",
+          "http_5xx",
+          "",
+          ""
+        ],
+        "doubles": [
+          -1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "play_fail",
+          "1.4.0",
+          "US",
+          "CA",
+          "Gamma.us",
+          "2df0f31ad126fe6b",
+          "manifest",
+          "",
+          ""
+        ],
+        "doubles": [
+          -1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "play_fail",
+          "1.4.0",
+          "IN",
+          "MH",
+          "BetaSports.in",
+          "4fb25a5c699457a3",
+          "codec",
+          "",
+          ""
+        ],
+        "doubles": [
+          -1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "android"
+        ],
+        "blobs": [
+          "android",
+          "play_fail",
+          "2.1.3",
+          "NP",
+          "BA",
+          "PinnedOne.in",
+          "860efbe15d9b0963",
+          "http_4xx",
+          "",
+          ""
+        ],
+        "doubles": [
+          -1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "android"
+        ],
+        "blobs": [
+          "android",
+          "play_fail",
+          "2.1.3",
+          "NP",
+          "BA",
+          "PinnedOne.in",
+          "860efbe15d9b0963",
+          "http_4xx",
+          "",
+          ""
+        ],
+        "doubles": [
+          -1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "play_fail",
+          "1.4.0",
+          "IN",
+          "MH",
+          "AlphaNews.in",
+          "12f5c541c54b864c",
+          "other",
+          "",
+          ""
+        ],
+        "doubles": [
+          -1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "guide_open",
+          "1.4.0",
+          "IN",
+          "MH",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        "doubles": [
+          -1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "android"
+        ],
+        "blobs": [
+          "android",
+          "guide_open",
+          "2.1.3",
+          "US",
+          "CA",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        "doubles": [
+          -1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "search",
+          "1.4.0",
+          "IN",
+          "MH",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        "doubles": [
+          -1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "search",
+          "1.4.0",
+          "IN",
+          "MH",
+          "",
+          "",
+          "",
+          "",
+          ""
+        ],
+        "doubles": [
+          -1,
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "perf",
+          "1.4.0",
+          "IN",
+          "MH",
+          "",
+          "",
+          "",
+          "video_start_time",
+          ""
+        ],
+        "doubles": [
+          2,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "perf",
+          "1.4.0",
+          "IN",
+          "MH",
+          "",
+          "",
+          "",
+          "video_start_time",
+          ""
+        ],
+        "doubles": [
+          4,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "perf",
+          "1.4.0",
+          "IN",
+          "MH",
+          "",
+          "",
+          "",
+          "video_start_time",
+          ""
+        ],
+        "doubles": [
+          6,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "perf",
+          "1.4.0",
+          "IN",
+          "MH",
+          "",
+          "",
+          "",
+          "video_start_time",
+          ""
+        ],
+        "doubles": [
+          8,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "perf",
+          "1.4.0",
+          "IN",
+          "MH",
+          "",
+          "",
+          "",
+          "catalogue_load",
+          ""
+        ],
+        "doubles": [
+          3,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "web"
+        ],
+        "blobs": [
+          "web",
+          "perf",
+          "1.4.0",
+          "IN",
+          "MH",
+          "",
+          "",
+          "",
+          "guide_open",
+          ""
+        ],
+        "doubles": [
+          1,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "android"
+        ],
+        "blobs": [
+          "android",
+          "perf",
+          "2.1.3",
+          "US",
+          "CA",
+          "",
+          "",
+          "",
+          "video_start_time",
+          ""
+        ],
+        "doubles": [
+          3,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "android"
+        ],
+        "blobs": [
+          "android",
+          "perf",
+          "2.1.3",
+          "US",
+          "CA",
+          "",
+          "",
+          "",
+          "rebuffer_ratio",
+          ""
+        ],
+        "doubles": [
+          0,
+          1,
+          0,
+          1
+        ]
+      },
+      {
+        "indexes": [
+          "android"
+        ],
+        "blobs": [
+          "android",
+          "perf",
+          "2.1.3",
+          "US",
+          "CA",
+          "",
+          "",
+          "",
+          "rebuffer_ratio",
+          ""
+        ],
+        "doubles": [
+          3,
+          1,
+          0,
+          1
+        ]
+      }
+    ],
+    "results": {
+      "metrics": [
+        {
+          "platform": "web",
+          "event": "app_open",
+          "flags": "dwmn",
+          "error_class": "",
+          "bucket": -1,
+          "zero": 0,
+          "n": 2
+        },
+        {
+          "platform": "web",
+          "event": "app_open",
+          "flags": "dw",
+          "error_class": "",
+          "bucket": -1,
+          "zero": 0,
+          "n": 3
+        },
+        {
+          "platform": "web",
+          "event": "app_open",
+          "flags": "d",
+          "error_class": "",
+          "bucket": -1,
+          "zero": 0,
+          "n": 54
+        },
+        {
+          "platform": "web",
+          "event": "app_open",
+          "flags": "",
+          "error_class": "",
+          "bucket": -1,
+          "zero": 0,
+          "n": 30
+        },
+        {
+          "platform": "android",
+          "event": "app_open",
+          "flags": "dm",
+          "error_class": "",
+          "bucket": -1,
+          "zero": 0,
+          "n": 22
+        },
+        {
+          "platform": "android",
+          "event": "app_open",
+          "flags": "dn",
+          "error_class": "",
+          "bucket": -1,
+          "zero": 0,
+          "n": 3
+        },
+        {
+          "platform": "web",
+          "event": "play",
+          "flags": "",
+          "error_class": "",
+          "bucket": -1,
+          "zero": 0,
+          "n": 90
+        },
+        {
+          "platform": "android",
+          "event": "play",
+          "flags": "",
+          "error_class": "",
+          "bucket": -1,
+          "zero": 0,
+          "n": 42
+        },
+        {
+          "platform": "web",
+          "event": "play_end",
+          "flags": "",
+          "error_class": "",
+          "bucket": 0,
+          "zero": 0,
+          "n": 4
+        },
+        {
+          "platform": "web",
+          "event": "play_end",
+          "flags": "",
+          "error_class": "",
+          "bucket": 3,
+          "zero": 0,
+          "n": 20
+        },
+        {
+          "platform": "web",
+          "event": "play_end",
+          "flags": "",
+          "error_class": "",
+          "bucket": 5,
+          "zero": 0,
+          "n": 10
+        },
+        {
+          "platform": "web",
+          "event": "play_end",
+          "flags": "",
+          "error_class": "",
+          "bucket": 6,
+          "zero": 0,
+          "n": 12
+        },
+        {
+          "platform": "android",
+          "event": "play_end",
+          "flags": "",
+          "error_class": "",
+          "bucket": 1,
+          "zero": 0,
+          "n": 8
+        },
+        {
+          "platform": "android",
+          "event": "play_end",
+          "flags": "",
+          "error_class": "",
+          "bucket": 2,
+          "zero": 0,
+          "n": 8
+        },
+        {
+          "platform": "android",
+          "event": "play_end",
+          "flags": "",
+          "error_class": "",
+          "bucket": 4,
+          "zero": 0,
+          "n": 4
+        },
+        {
+          "platform": "android",
+          "event": "play_fail",
+          "flags": "",
+          "error_class": "http_5xx",
+          "bucket": -1,
+          "zero": 0,
+          "n": 9
+        },
+        {
+          "platform": "web",
+          "event": "play_fail",
+          "flags": "",
+          "error_class": "manifest",
+          "bucket": -1,
+          "zero": 0,
+          "n": 3
+        },
+        {
+          "platform": "web",
+          "event": "play_fail",
+          "flags": "",
+          "error_class": "codec",
+          "bucket": -1,
+          "zero": 0,
+          "n": 11
+        },
+        {
+          "platform": "android",
+          "event": "play_fail",
+          "flags": "",
+          "error_class": "http_4xx",
+          "bucket": -1,
+          "zero": 0,
+          "n": 13
+        },
+        {
+          "platform": "web",
+          "event": "play_fail",
+          "flags": "",
+          "error_class": "other",
+          "bucket": -1,
+          "zero": 0,
+          "n": 1
+        },
+        {
+          "platform": "web",
+          "event": "guide_open",
+          "flags": "",
+          "error_class": "",
+          "bucket": -1,
+          "zero": 0,
+          "n": 35
+        },
+        {
+          "platform": "android",
+          "event": "guide_open",
+          "flags": "",
+          "error_class": "",
+          "bucket": -1,
+          "zero": 0,
+          "n": 9
+        },
+        {
+          "platform": "web",
+          "event": "search",
+          "flags": "",
+          "error_class": "",
+          "bucket": -1,
+          "zero": 0,
+          "n": 18
+        },
+        {
+          "platform": "web",
+          "event": "search",
+          "flags": "",
+          "error_class": "",
+          "bucket": -1,
+          "zero": 1,
+          "n": 2
+        },
+        {
+          "platform": "web",
+          "event": "perf",
+          "flags": "",
+          "error_class": "",
+          "bucket": 2,
+          "zero": 0,
+          "n": 30
+        },
+        {
+          "platform": "web",
+          "event": "perf",
+          "flags": "",
+          "error_class": "",
+          "bucket": 4,
+          "zero": 0,
+          "n": 25
+        },
+        {
+          "platform": "web",
+          "event": "perf",
+          "flags": "",
+          "error_class": "",
+          "bucket": 6,
+          "zero": 0,
+          "n": 4
+        },
+        {
+          "platform": "web",
+          "event": "perf",
+          "flags": "",
+          "error_class": "",
+          "bucket": 8,
+          "zero": 0,
+          "n": 1
+        },
+        {
+          "platform": "web",
+          "event": "perf",
+          "flags": "",
+          "error_class": "",
+          "bucket": 3,
+          "zero": 0,
+          "n": 50
+        },
+        {
+          "platform": "web",
+          "event": "perf",
+          "flags": "",
+          "error_class": "",
+          "bucket": 1,
+          "zero": 0,
+          "n": 30
+        },
+        {
+          "platform": "android",
+          "event": "perf",
+          "flags": "",
+          "error_class": "",
+          "bucket": 3,
+          "zero": 0,
+          "n": 25
+        },
+        {
+          "platform": "android",
+          "event": "perf",
+          "flags": "",
+          "error_class": "",
+          "bucket": 0,
+          "zero": 0,
+          "n": 15
+        }
+      ],
+      "hours": [
+        {
+          "platform": "web",
+          "event": "app_open",
+          "hour": "2026-09-26 09:00:00",
+          "n": 30
+        },
+        {
+          "platform": "web",
+          "event": "app_open",
+          "hour": "2026-09-26 20:00:00",
+          "n": 30
+        },
+        {
+          "platform": "web",
+          "event": "app_open",
+          "hour": "2026-09-26 10:00:00",
+          "n": 25
+        },
+        {
+          "platform": "web",
+          "event": "app_open",
+          "hour": "2026-09-26 11:00:00",
+          "n": 4
+        },
+        {
+          "platform": "android",
+          "event": "app_open",
+          "hour": "2026-09-26 02:00:00",
+          "n": 22
+        },
+        {
+          "platform": "android",
+          "event": "app_open",
+          "hour": "2026-09-26 03:00:00",
+          "n": 3
+        },
+        {
+          "platform": "web",
+          "event": "play",
+          "hour": "2026-09-26 09:00:00",
+          "n": 40
+        },
+        {
+          "platform": "web",
+          "event": "play",
+          "hour": "2026-09-26 10:00:00",
+          "n": 22
+        },
+        {
+          "platform": "web",
+          "event": "play",
+          "hour": "2026-09-26 20:00:00",
+          "n": 25
+        },
+        {
+          "platform": "web",
+          "event": "play",
+          "hour": "2026-09-26 11:00:00",
+          "n": 3
+        },
+        {
+          "platform": "android",
+          "event": "play",
+          "hour": "2026-09-26 02:00:00",
+          "n": 30
+        },
+        {
+          "platform": "android",
+          "event": "play",
+          "hour": "2026-09-26 03:00:00",
+          "n": 12
+        }
+      ],
+      "geo": [
+        {
+          "platform": "web",
+          "country": "IN",
+          "region": "MH",
+          "event": "app_open",
+          "n": 60
+        },
+        {
+          "platform": "web",
+          "country": "IN",
+          "region": "KA",
+          "event": "app_open",
+          "n": 25
+        },
+        {
+          "platform": "web",
+          "country": "IN",
+          "region": "GA",
+          "event": "app_open",
+          "n": 4
+        },
+        {
+          "platform": "android",
+          "country": "US",
+          "region": "CA",
+          "event": "app_open",
+          "n": 22
+        },
+        {
+          "platform": "android",
+          "country": "NP",
+          "region": "BA",
+          "event": "app_open",
+          "n": 3
+        },
+        {
+          "platform": "web",
+          "country": "IN",
+          "region": "MH",
+          "event": "play",
+          "n": 65
+        },
+        {
+          "platform": "web",
+          "country": "IN",
+          "region": "KA",
+          "event": "play",
+          "n": 22
+        },
+        {
+          "platform": "web",
+          "country": "IN",
+          "region": "GA",
+          "event": "play",
+          "n": 3
+        },
+        {
+          "platform": "android",
+          "country": "US",
+          "region": "CA",
+          "event": "play",
+          "n": 30
+        },
+        {
+          "platform": "android",
+          "country": "NP",
+          "region": "BA",
+          "event": "play",
+          "n": 12
+        },
+        {
+          "platform": "android",
+          "country": "US",
+          "region": "CA",
+          "event": "play_fail",
+          "n": 9
+        },
+        {
+          "platform": "web",
+          "country": "US",
+          "region": "CA",
+          "event": "play_fail",
+          "n": 3
+        },
+        {
+          "platform": "web",
+          "country": "IN",
+          "region": "MH",
+          "event": "play_fail",
+          "n": 12
+        },
+        {
+          "platform": "android",
+          "country": "NP",
+          "region": "BA",
+          "event": "play_fail",
+          "n": 13
+        }
+      ],
+      "channels": [
+        {
+          "platform": "web",
+          "channel_id": "AlphaNews.in",
+          "country": "IN",
+          "event": "play",
+          "bucket": -1,
+          "n": 62
+        },
+        {
+          "platform": "android",
+          "channel_id": "Gamma.us",
+          "country": "US",
+          "event": "play",
+          "bucket": -1,
+          "n": 30
+        },
+        {
+          "platform": "web",
+          "channel_id": "BetaSports.in",
+          "country": "IN",
+          "event": "play",
+          "bucket": -1,
+          "n": 25
+        },
+        {
+          "platform": "web",
+          "channel_id": "AlphaNews.in",
+          "country": "IN",
+          "event": "play_end",
+          "bucket": 3,
+          "n": 20
+        },
+        {
+          "platform": "android",
+          "channel_id": "PinnedOne.in",
+          "country": "NP",
+          "event": "play_fail",
+          "bucket": -1,
+          "n": 13
+        },
+        {
+          "platform": "android",
+          "channel_id": "PinnedOne.in",
+          "country": "NP",
+          "event": "play",
+          "bucket": -1,
+          "n": 12
+        },
+        {
+          "platform": "web",
+          "channel_id": "BetaSports.in",
+          "country": "IN",
+          "event": "play_end",
+          "bucket": 6,
+          "n": 12
+        },
+        {
+          "platform": "web",
+          "channel_id": "BetaSports.in",
+          "country": "IN",
+          "event": "play_fail",
+          "bucket": -1,
+          "n": 11
+        },
+        {
+          "platform": "web",
+          "channel_id": "AlphaNews.in",
+          "country": "IN",
+          "event": "play_end",
+          "bucket": 5,
+          "n": 10
+        },
+        {
+          "platform": "android",
+          "channel_id": "Gamma.us",
+          "country": "US",
+          "event": "play_fail",
+          "bucket": -1,
+          "n": 9
+        },
+        {
+          "platform": "android",
+          "channel_id": "Gamma.us",
+          "country": "US",
+          "event": "play_end",
+          "bucket": 1,
+          "n": 8
+        },
+        {
+          "platform": "android",
+          "channel_id": "Gamma.us",
+          "country": "US",
+          "event": "play_end",
+          "bucket": 2,
+          "n": 8
+        },
+        {
+          "platform": "web",
+          "channel_id": "AlphaNews.in",
+          "country": "IN",
+          "event": "play_end",
+          "bucket": 0,
+          "n": 4
+        },
+        {
+          "platform": "android",
+          "channel_id": "Gamma.us",
+          "country": "US",
+          "event": "play_end",
+          "bucket": 4,
+          "n": 4
+        },
+        {
+          "platform": "web",
+          "channel_id": "Delta.in",
+          "country": "IN",
+          "event": "play",
+          "bucket": -1,
+          "n": 3
+        },
+        {
+          "platform": "web",
+          "channel_id": "Gamma.us",
+          "country": "US",
+          "event": "play_fail",
+          "bucket": -1,
+          "n": 3
+        },
+        {
+          "platform": "web",
+          "channel_id": "AlphaNews.in",
+          "country": "IN",
+          "event": "play_fail",
+          "bucket": -1,
+          "n": 1
+        }
+      ],
+      "perf": [
+        {
+          "platform": "web",
+          "metric": "video_start_time",
+          "bucket": 2,
+          "n": 30
+        },
+        {
+          "platform": "web",
+          "metric": "video_start_time",
+          "bucket": 4,
+          "n": 25
+        },
+        {
+          "platform": "web",
+          "metric": "video_start_time",
+          "bucket": 6,
+          "n": 4
+        },
+        {
+          "platform": "web",
+          "metric": "video_start_time",
+          "bucket": 8,
+          "n": 1
+        },
+        {
+          "platform": "web",
+          "metric": "catalogue_load",
+          "bucket": 3,
+          "n": 50
+        },
+        {
+          "platform": "web",
+          "metric": "guide_open",
+          "bucket": 1,
+          "n": 30
+        },
+        {
+          "platform": "android",
+          "metric": "video_start_time",
+          "bucket": 3,
+          "n": 20
+        },
+        {
+          "platform": "android",
+          "metric": "rebuffer_ratio",
+          "bucket": 0,
+          "n": 15
+        },
+        {
+          "platform": "android",
+          "metric": "rebuffer_ratio",
+          "bucket": 3,
+          "n": 5
+        }
+      ],
+      "health": [
+        {
+          "stream_key": "2df0f31ad126fe6b",
+          "channel_id": "Gamma.us",
+          "hour": "2026-09-26 02:00:00",
+          "n": 5
+        },
+        {
+          "stream_key": "2df0f31ad126fe6b",
+          "channel_id": "Gamma.us",
+          "hour": "2026-09-26 05:00:00",
+          "n": 4
+        },
+        {
+          "stream_key": "2df0f31ad126fe6b",
+          "channel_id": "Gamma.us",
+          "hour": "2026-09-26 14:00:00",
+          "n": 3
+        },
+        {
+          "stream_key": "4fb25a5c699457a3",
+          "channel_id": "BetaSports.in",
+          "hour": "2026-09-26 20:00:00",
+          "n": 11
+        },
+        {
+          "stream_key": "860efbe15d9b0963",
+          "channel_id": "PinnedOne.in",
+          "hour": "2026-09-26 03:00:00",
+          "n": 6
+        },
+        {
+          "stream_key": "860efbe15d9b0963",
+          "channel_id": "PinnedOne.in",
+          "hour": "2026-09-26 15:00:00",
+          "n": 7
+        },
+        {
+          "stream_key": "12f5c541c54b864c",
+          "channel_id": "AlphaNews.in",
+          "hour": "2026-09-26 09:00:00",
+          "n": 1
+        }
+      ]
+    },
+    "tables": {
+      "daily_metrics": [
+        {
+          "day": "2026-09-26",
+          "platform": "android",
+          "event": "app_open",
+          "bucket": -1,
+          "flag": "",
+          "count": 25
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "android",
+          "event": "app_open",
+          "bucket": -1,
+          "flag": "d",
+          "count": 25
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "android",
+          "event": "app_open",
+          "bucket": -1,
+          "flag": "m",
+          "count": 22
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "android",
+          "event": "app_open",
+          "bucket": -1,
+          "flag": "n",
+          "count": 3
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "android",
+          "event": "guide_open",
+          "bucket": -1,
+          "flag": "",
+          "count": 9
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "android",
+          "event": "play",
+          "bucket": -1,
+          "flag": "",
+          "count": 42
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "android",
+          "event": "play_end",
+          "bucket": 1,
+          "flag": "",
+          "count": 8
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "android",
+          "event": "play_end",
+          "bucket": 2,
+          "flag": "",
+          "count": 8
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "android",
+          "event": "play_end",
+          "bucket": 4,
+          "flag": "",
+          "count": 4
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "android",
+          "event": "play_fail",
+          "bucket": -1,
+          "flag": "",
+          "count": 22
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "android",
+          "event": "play_fail",
+          "bucket": -1,
+          "flag": "http_4xx",
+          "count": 13
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "android",
+          "event": "play_fail",
+          "bucket": -1,
+          "flag": "http_5xx",
+          "count": 9
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "event": "app_open",
+          "bucket": -1,
+          "flag": "",
+          "count": 89
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "event": "app_open",
+          "bucket": -1,
+          "flag": "d",
+          "count": 59
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "event": "app_open",
+          "bucket": -1,
+          "flag": "m",
+          "count": 2
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "event": "app_open",
+          "bucket": -1,
+          "flag": "n",
+          "count": 2
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "event": "app_open",
+          "bucket": -1,
+          "flag": "w",
+          "count": 5
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "event": "guide_open",
+          "bucket": -1,
+          "flag": "",
+          "count": 35
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "event": "play",
+          "bucket": -1,
+          "flag": "",
+          "count": 90
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "event": "play_end",
+          "bucket": 0,
+          "flag": "",
+          "count": 4
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "event": "play_end",
+          "bucket": 3,
+          "flag": "",
+          "count": 20
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "event": "play_end",
+          "bucket": 5,
+          "flag": "",
+          "count": 10
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "event": "play_end",
+          "bucket": 6,
+          "flag": "",
+          "count": 12
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "event": "play_fail",
+          "bucket": -1,
+          "flag": "",
+          "count": 15
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "event": "play_fail",
+          "bucket": -1,
+          "flag": "codec",
+          "count": 11
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "event": "play_fail",
+          "bucket": -1,
+          "flag": "manifest",
+          "count": 3
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "event": "play_fail",
+          "bucket": -1,
+          "flag": "other",
+          "count": 1
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "event": "search",
+          "bucket": -1,
+          "flag": "",
+          "count": 20
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "event": "search",
+          "bucket": -1,
+          "flag": "zero",
+          "count": 2
+        }
+      ],
+      "daily_hours": [
+        {
+          "day": "2026-09-26",
+          "platform": "android",
+          "hour": 2,
+          "event": "app_open",
+          "count": 22
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "android",
+          "hour": 2,
+          "event": "play",
+          "count": 30
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "android",
+          "hour": 3,
+          "event": "app_open",
+          "count": 3
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "android",
+          "hour": 3,
+          "event": "play",
+          "count": 12
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "hour": 9,
+          "event": "app_open",
+          "count": 30
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "hour": 9,
+          "event": "play",
+          "count": 40
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "hour": 10,
+          "event": "app_open",
+          "count": 25
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "hour": 10,
+          "event": "play",
+          "count": 22
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "hour": 11,
+          "event": "app_open",
+          "count": 4
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "hour": 11,
+          "event": "play",
+          "count": 3
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "hour": 20,
+          "event": "app_open",
+          "count": 30
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "hour": 20,
+          "event": "play",
+          "count": 25
+        }
+      ],
+      "daily_geo": [
+        {
+          "day": "2026-09-26",
+          "platform": "android",
+          "country": "US",
+          "region": "CA",
+          "app_opens": 22,
+          "plays": 30,
+          "play_fails": 9
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "android",
+          "country": "ZZ",
+          "region": "*",
+          "app_opens": 3,
+          "plays": 12,
+          "play_fails": 13
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "country": "IN",
+          "region": "*",
+          "app_opens": 4,
+          "plays": 3,
+          "play_fails": 0
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "country": "IN",
+          "region": "KA",
+          "app_opens": 25,
+          "plays": 22,
+          "play_fails": 0
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "country": "IN",
+          "region": "MH",
+          "app_opens": 60,
+          "plays": 65,
+          "play_fails": 12
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "country": "ZZ",
+          "region": "*",
+          "app_opens": 0,
+          "plays": 0,
+          "play_fails": 3
+        }
+      ],
+      "daily_channels": [
+        {
+          "day": "2026-09-26",
+          "platform": "android",
+          "channel_id": "Gamma.us",
+          "country": "US",
+          "plays": 30,
+          "play_fails": 9,
+          "play_ends": 20,
+          "watch_est_min": 45.36
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "android",
+          "channel_id": "PinnedOne.in",
+          "country": "ZZ",
+          "plays": 12,
+          "play_fails": 13,
+          "play_ends": 0,
+          "watch_est_min": 0
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "channel_id": "AlphaNews.in",
+          "country": "IN",
+          "plays": 62,
+          "play_fails": 1,
+          "play_ends": 34,
+          "watch_est_min": 435
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "channel_id": "BetaSports.in",
+          "country": "IN",
+          "plays": 25,
+          "play_fails": 11,
+          "play_ends": 12,
+          "watch_est_min": 720
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "channel_id": "Delta.in",
+          "country": "ZZ",
+          "plays": 3,
+          "play_fails": 0,
+          "play_ends": 0,
+          "watch_est_min": 0
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "channel_id": "Gamma.us",
+          "country": "ZZ",
+          "plays": 0,
+          "play_fails": 3,
+          "play_ends": 0,
+          "watch_est_min": 0
+        }
+      ],
+      "daily_perf": [
+        {
+          "day": "2026-09-26",
+          "platform": "android",
+          "metric": "rebuffer_ratio",
+          "bucket": 0,
+          "count": 15
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "android",
+          "metric": "rebuffer_ratio",
+          "bucket": 3,
+          "count": 5
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "android",
+          "metric": "video_start_time",
+          "bucket": 3,
+          "count": 20
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "metric": "catalogue_load",
+          "bucket": 3,
+          "count": 50
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "metric": "guide_open",
+          "bucket": 1,
+          "count": 30
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "metric": "video_start_time",
+          "bucket": 2,
+          "count": 30
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "metric": "video_start_time",
+          "bucket": 4,
+          "count": 25
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "metric": "video_start_time",
+          "bucket": 6,
+          "count": 4
+        },
+        {
+          "day": "2026-09-26",
+          "platform": "web",
+          "metric": "video_start_time",
+          "bucket": 8,
+          "count": 1
+        }
+      ]
+    },
+    "pointsCounted": 593,
+    "reports": {
+      "schema": 1,
+      "generatedAt": "2026-09-26T23:30:00.000Z",
+      "windowHours": 24,
+      "k": 10,
+      "minHours": 2,
+      "cap": 100,
+      "candidates": 1,
+      "streams": [
+        {
+          "streamKey": "2df0f31ad126fe6b",
+          "channelId": "Gamma.us",
+          "playFails": 12,
+          "hours": 3
+        }
+      ]
+    }
+  }
+}

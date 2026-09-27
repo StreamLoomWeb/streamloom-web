@@ -1,0 +1,258 @@
+/*
+ * The analytics dashboard (ADR-0047). One reader. One hue for every data mark (the theme
+ * accent), text in text tokens, a table under every chart, status colours only on the budget
+ * lines and always beside a word or a glyph.
+ */
+
+.an {
+  max-width: 1280px;
+}
+
+.an-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.an-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-sm);
+}
+
+.an-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+}
+
+.an-tile__value {
+  font-size: clamp(20px, 2.6vw, 28px);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.an-tile__label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.an-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-sm);
+}
+
+.an-grid--wide {
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+}
+
+.an-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding: var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  min-width: 0;
+}
+
+.an-card h2 {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.an-note {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.an-empty {
+  font-size: 12px;
+  color: var(--text-muted, var(--text-secondary));
+  text-align: center;
+}
+
+.an-spark {
+  width: 100%;
+  height: 56px;
+  overflow: visible;
+}
+
+.an-bars,
+.an-hours {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 84px;
+}
+
+.an-bar,
+.an-hour {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 100%;
+  position: relative;
+}
+
+.an-bar__fill,
+.an-hour__fill {
+  background: var(--accent);
+  border-radius: 4px 4px 0 0;
+  min-height: 0;
+}
+
+.an-bar__label,
+.an-hour__label {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  font-size: 9px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  transform: rotate(45deg);
+  transform-origin: top left;
+  margin-top: 2px;
+}
+
+.an-bars {
+  margin-bottom: 44px;
+}
+
+.an-hours {
+  margin-bottom: 18px;
+}
+
+.an-kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 12px;
+  font-size: 13px;
+}
+
+.an-kv dt {
+  color: var(--text-secondary);
+}
+
+.an-kv dd {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.an-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.an-table th,
+.an-table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+  vertical-align: top;
+}
+
+.an-table th {
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.an-table--compact th,
+.an-table--compact td {
+  padding: 4px 8px;
+}
+
+.an-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.an-budget {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.an-budget__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.an-budget__track {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.an-budget__fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+}
+
+.an-budget--near .an-budget__fill {
+  background: #d99a2b;
+}
+
+.an-budget--over .an-budget__fill {
+  background: #d64545;
+}
+
+.an-budget__rule {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--text-secondary);
+  opacity: 0.6;
+}
+
+.an-queries summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.an-queries pre {
+  overflow-x: auto;
+  font-size: 11px;
+  line-height: 1.45;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+}
+
+@media (max-width: 720px) {
+  .an-grid--wide {
+    grid-template-columns: 1fr;
+  }
+  .an-table {
+    display: block;
+    overflow-x: auto;
+  }
+}
