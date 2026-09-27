@@ -99,8 +99,8 @@ export function isStreamSpecificFailure(
 }
 
 /**
- * Same-origin asset that is not in the service worker precache once given a
- * query string, so the request always reaches the network.
+ * Same-origin asset, fetched with a query string and `no-store` so the request
+ * always reaches the network.
  */
 const PROBE_PATH = '/favicon.svg'
 

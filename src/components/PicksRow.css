@@ -1,0 +1,90 @@
+/*
+ * The author's-picks rows. Structurally the same rail as `.category-row`, with
+ * room under each card for the author's note and the "no stream available"
+ * state, which a plain category row never has to show.
+ */
+
+.picks-row {
+  margin-bottom: var(--space-xl);
+}
+
+.picks-row__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: var(--space-md);
+}
+
+.picks-row__title {
+  font-size: clamp(16px, 2vw, 20px);
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+}
+
+.picks-row__count {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.picks-row__pending {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px dashed var(--border);
+}
+
+/* Pushed to the header's end, same ‹ › controls every other row has. */
+.picks-row__controls {
+  margin-left: auto;
+}
+
+.picks-row__track {
+  display: flex;
+  gap: var(--space-md);
+  overflow-x: auto;
+  padding-bottom: var(--space-sm);
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.picks-row__track::-webkit-scrollbar {
+  display: none;
+}
+
+.picks-row__item {
+  scroll-snap-align: start;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.picks-row__note {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-secondary);
+  max-width: 200px;
+  /* Two lines, then ellipsis: the full note is on the element's title. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.picks-row__unavailable {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  max-width: 200px;
+}

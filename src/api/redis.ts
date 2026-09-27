@@ -218,9 +218,11 @@ export async function fetchCatalogueFromRedis(
  * malformed), so callers can tell "schedules unavailable" apart from a
  * successful read that simply lists no channels. `fresh` re-reads the
  * generation pointer first, for long-lived tabs whose cached prefix may be stale.
+ * `generation` pins the read to a generation the caller already chose (the one the
+ * catalogue came from), so the list never comes from a different one.
  */
-export async function fetchEpgIdsFromRedis(fresh = false): Promise<string[] | null> {
-  const prefix = await resolvePrefix(fresh)
+export async function fetchEpgIdsFromRedis(fresh = false, generation?: number): Promise<string[] | null> {
+  const prefix = generation !== undefined ? prefixFor(generation) : await resolvePrefix(fresh)
   if (!prefix) return null
   const raw = await redisGet(prefix + ':epg:ids')
   if (!raw) return null

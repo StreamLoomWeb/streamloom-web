@@ -10,6 +10,10 @@ import type { UpstashMock } from './support/upstashMock'
  * and a repeat visit on an unchanged catalogue generation must not re-download
  * the catalogue. These tests count requests against an in-process mock, so they
  * spend none of the real quota.
+ *
+ * No R2 snapshot host is started here, so the client's first choice refuses the
+ * connection and every read falls through to Redis: this spec is the Redis
+ * fallback's budget. The R2-first path is e2e/catalogue-r2.spec.ts.
  */
 
 /** Ceiling for schedule reads on guide open ("about 50" in the work order). */

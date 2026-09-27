@@ -1,23 +1,40 @@
 /**
  * Theme utility for managing Dark and Light appearance modes.
- * Defaults to 'dark' with persistence in localStorage ('sl_theme').
+ * Defaults to 'system' (following the OS) with persistence in localStorage
+ * ('sl_theme'). 'system' resolves live: an OS-level change is picked up
+ * without a reload while that preference is selected.
  */
 
 export type Theme = 'dark' | 'light'
+export type ThemePreference = Theme | 'system'
 
 const THEME_KEY = 'sl_theme'
 const listeners = new Set<(theme: Theme) => void>()
+let mediaQuery: MediaQueryList | null = null
 
-export function getStoredTheme(): Theme {
+function systemTheme(): Theme {
+  if (typeof window === 'undefined' || !window.matchMedia) return 'dark'
+  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+}
+
+function resolve(pref: ThemePreference): Theme {
+  return pref === 'system' ? systemTheme() : pref
+}
+
+export function getStoredPreference(): ThemePreference {
   try {
     const saved = localStorage.getItem(THEME_KEY)
-    if (saved === 'light' || saved === 'dark') {
+    if (saved === 'light' || saved === 'dark' || saved === 'system') {
       return saved
     }
   } catch {
     // ignore
   }
-  return 'dark'
+  return 'system'
+}
+
+export function getStoredTheme(): Theme {
+  return resolve(getStoredPreference())
 }
 
 export function applyThemeToDom(theme: Theme) {
@@ -32,16 +49,24 @@ export function applyThemeToDom(theme: Theme) {
   }
 }
 
-export function setTheme(theme: Theme) {
+function syncSystemListener(pref: ThemePreference) {
+  if (typeof window === 'undefined' || !window.matchMedia) return
+  if (!mediaQuery) mediaQuery = window.matchMedia('(prefers-color-scheme: light)')
+  mediaQuery.onchange = pref === 'system' ? () => setTheme('system') : null
+}
+
+export function setTheme(preference: ThemePreference) {
   try {
-    localStorage.setItem(THEME_KEY, theme)
+    localStorage.setItem(THEME_KEY, preference)
   } catch {
     // ignore
   }
-  applyThemeToDom(theme)
+  const resolved = resolve(preference)
+  applyThemeToDom(resolved)
+  syncSystemListener(preference)
   listeners.forEach((fn) => {
     try {
-      fn(theme)
+      fn(resolved)
     } catch {
       // ignore
     }
@@ -63,5 +88,7 @@ export function onThemeChange(listener: (theme: Theme) => void): () => void {
 
 // Initial application
 if (typeof window !== 'undefined') {
-  applyThemeToDom(getStoredTheme())
+  const preference = getStoredPreference()
+  applyThemeToDom(resolve(preference))
+  syncSystemListener(preference)
 }

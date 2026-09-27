@@ -56,7 +56,7 @@ export function Navbar() {
         </div>
       </nav>
 
-      {/* Mobile Bottom Navigation Bar (< 768px) */}
+      {/* Mobile Bottom Navigation Bar (below medium — see src/styles/breakpoints.css) */}
       <nav className="mobile-nav glass" role="navigation" aria-label="Mobile navigation">
         <NavLink
           to="/"
@@ -85,16 +85,6 @@ export function Navbar() {
           </span>
           <span className="mobile-nav__label">Favourites</span>
         </NavLink>
-
-        <button
-          type="button"
-          className="mobile-nav__item"
-          onClick={toggleTheme}
-          aria-label={isDark ? 'Switch to Light mode' : 'Switch to Dark mode'}
-        >
-          <span className="mobile-nav__icon">{isDark ? '☀️' : '🌙'}</span>
-          <span className="mobile-nav__label">{isDark ? 'Light' : 'Dark'}</span>
-        </button>
 
         <NavLink
           to="/settings"

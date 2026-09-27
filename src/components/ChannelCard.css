@@ -1,4 +1,5 @@
 .channel-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   background: var(--bg-card);
@@ -9,13 +10,29 @@
     transform var(--duration-base) var(--ease-spring),
     box-shadow var(--duration-base) var(--ease-out),
     border-color var(--duration-base) var(--ease-out);
-  cursor: pointer;
   flex-shrink: 0;
 }
 
+.channel-card__surface {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.channel-card--no-stream .channel-card__surface {
+  cursor: default;
+}
+
 .channel-card:hover,
-.channel-card:focus,
-.channel-card:focus-visible,
+.channel-card:has(.channel-card__surface:focus-visible),
 .channel-card.focused {
   transform: translateY(-4px) scale(1.02);
   box-shadow: var(--shadow-card-hover);
@@ -24,20 +41,18 @@
   will-change: transform;
 }
 
-.channel-card:focus .channel-card__play-overlay,
-.channel-card:focus-visible .channel-card__play-overlay,
+.channel-card:has(.channel-card__surface:focus-visible) .channel-card__play-overlay,
 .channel-card.focused .channel-card__play-overlay {
   opacity: 1;
 }
 
-.channel-card:focus .channel-card__fav,
-.channel-card:focus-visible .channel-card__fav,
+.channel-card:has(.channel-card__surface:focus-visible) .channel-card__fav,
 .channel-card.focused .channel-card__fav {
   opacity: 1;
 }
 
 /* Soft focus ring for keyboard/TV navigation - Apple uses a subtle glow, not a hard outline. */
-.channel-card:focus-visible,
+.channel-card:has(.channel-card__surface:focus-visible),
 .channel-card.focused {
   outline: none;
   box-shadow: var(--shadow-card-hover), 0 0 0 3px var(--accent-glow);
@@ -47,7 +62,6 @@
 
 .channel-card--no-stream {
   opacity: 0.5;
-  cursor: default;
   pointer-events: none;
 }
 
@@ -145,6 +159,20 @@
   min-width: 0;
 }
 
+.channel-card__progress {
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+  margin-top: 2px;
+}
+
+.channel-card__progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+}
+
 .channel-card__country {
   font-size: 11px;
   font-weight: 500;
@@ -188,6 +216,17 @@
 }
 
 .channel-card:hover .channel-card__fav { opacity: 1; }
+
+/* No hover surface (touch) means the heart would otherwise never show up
+   until it's already favourited — show it, and grow it to a 44px target. */
+@media (hover: none) {
+  .channel-card__fav {
+    opacity: 1;
+    width: 44px;
+    height: 44px;
+    font-size: 20px;
+  }
+}
 
 .channel-card__fav--active {
   opacity: 1 !important;

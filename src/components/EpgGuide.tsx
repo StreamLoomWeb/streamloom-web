@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { Category, EnrichedChannel, EpgProgram } from '../api/types'
-import { fetchEpgFromRedis, resolveGeneration } from '../api/redis'
+import { fetchEpg } from '../api/catalogueSource'
 import { persistSchedules, readPersistedSchedules } from '../util/scheduleLoader'
 import {
   PIXELS_PER_MINUTE,
@@ -17,16 +17,20 @@ import {
   useTranslationVersion,
 } from '../util/translate'
 import { applyFilters } from '../util/epgFilter'
+import { prefetchPlaylist } from '../util/playlistPrefetch'
 import type { GuideFilters } from '../util/epgFilter'
 import { EpgToolbar } from './EpgToolbar'
 import { EpgTimeline } from './EpgTimeline'
 import { EpgRow } from './EpgRow'
+import { COMPACT_MAX, MEDIUM_MAX } from '../styles/breakpoints'
 import './EpgGuide.css'
 
 interface Props {
   channels: EnrichedChannel[]
   categories: Category[]
   epgChannelIds: Set<string>
+  /** Generation `channels` and `epgChannelIds` actually are; null before the first load. */
+  generation: number | null
   filters: GuideFilters
   /**
    * Pre-resolved set of channel ids matching the current search query, or
@@ -115,10 +119,10 @@ function isCoolingDown(channelId: string): boolean {
   return false
 }
 
-/** Reads one schedule from Redis, pinned to the generation the caller keys storage by. */
+/** Reads one schedule (R2, then Redis), pinned to the generation the caller keys storage by. */
 async function loadEpg(channelId: string, generation: number): Promise<EpgProgram[]> {
   try {
-    const data = await fetchEpgFromRedis(channelId, generation)
+    const data = await fetchEpg(channelId, generation)
     if (data.length > 0) {
       emptyRetryAt.delete(channelId)
       cacheEpg(channelId, data)
@@ -148,18 +152,29 @@ interface PrefetchPass {
 }
 
 /**
- * Loads schedules for `ids`: from IndexedDB where stored, otherwise from Redis at
- * most FETCH_CONCURRENCY at a time, then stores what Redis returned.
+ * Loads schedules for `ids`: from IndexedDB where stored, otherwise from the network at
+ * most FETCH_CONCURRENCY at a time, then stores what it returned.
+ *
+ * `generation` is the caller's own held generation (`useChannels`' `generation`,
+ * the same one `channels` and `epgChannelIds` are already for), not re-resolved
+ * here: the catalogue pointer can move on in the background (a refresh, another
+ * tab's load) between when this view's catalogue loaded and when it scrolls, and
+ * reading the pointer fresh at that point would fetch schedules for a generation
+ * other than the one actually on screen.
  *
  * Notifications are coalesced per animation frame: a screenful of schedules
  * arrives as dozens of separate awaits, and repainting per channel would cost
  * one render each instead of one render for the whole wave.
  */
-async function prefetchEpg(ids: string[], onLoaded: () => void, pass: PrefetchPass) {
-  const generation = await resolveGeneration()
+async function prefetchEpg(
+  ids: string[],
+  generation: number | null,
+  onLoaded: () => void,
+  pass: PrefetchPass,
+) {
   if (generation === null) {
-    // The generation pointer could not be read, so no schedule can be. Cool the
-    // rows down rather than re-reading the pointer on every scroll step.
+    // No catalogue is held yet, so no schedule can be. Cool the rows down
+    // rather than fetching for a generation the view isn't showing.
     for (const id of ids) emptyRetryAt.set(id, Date.now() + EMPTY_RETRY_MS)
     return
   }
@@ -258,8 +273,8 @@ function channelCoverage(channelIds: string[]): { earliestEnd: number; latestEnd
 }
 
 function guideMetricsFor(viewportWidth: number): { sidebar: number; rowHeight: number } {
-  if (viewportWidth <= 480) return { sidebar: 104, rowHeight: 52 }
-  if (viewportWidth <= 768) return { sidebar: 132, rowHeight: 56 }
+  if (viewportWidth <= COMPACT_MAX) return { sidebar: 104, rowHeight: 52 }
+  if (viewportWidth <= MEDIUM_MAX) return { sidebar: 132, rowHeight: 56 }
   return { sidebar: SIDEBAR_WIDTH, rowHeight: ROW_HEIGHT }
 }
 
@@ -267,6 +282,7 @@ export function EpgGuide({
   channels,
   categories,
   epgChannelIds,
+  generation,
   filters,
   matchSet,
   schedulesUnavailable = false,
@@ -374,14 +390,14 @@ export function EpgGuide({
     const delay = hasPrefetchedRef.current ? PREFETCH_SETTLE_MS : 0
     const timer = setTimeout(() => {
       hasPrefetchedRef.current = true
-      void prefetchEpg(ids, bumpCache, pass)
+      void prefetchEpg(ids, generation, bumpCache, pass)
     }, delay)
     return () => {
       clearTimeout(timer)
       pass.cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the id set and row window
-  }, [guideKey, prefetchFirst, prefetchLast, bumpCache, schedulesUnavailable])
+  }, [guideKey, prefetchFirst, prefetchLast, bumpCache, schedulesUnavailable, generation])
 
   // Vertical virtualization: only rows intersecting the viewport are rendered.
   const totalHeight = guideChannels.length * rowHeight
@@ -392,6 +408,71 @@ export function EpgGuide({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [guideChannels, firstRowForWindow, lastRowForWindow, cacheTick],
   )
+
+  /**
+   * Arrow-key grid movement (S5): Left/Right walk the focusable stops within
+   * the current row (channel column, then each programme box); Up/Down move
+   * to the row above/below, landing on the programme box closest to the same
+   * horizontal position so a viewer scanning a time column stays in it.
+   *
+   * Rows outside the virtualizer's rendered window (`OVERSCAN_PX`) don't
+   * exist in the DOM yet, so a jump that lands there is a no-op — the normal
+   * case only up/down by one row from what's already rendered.
+   */
+  const handleGuideKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return
+    const target = e.target as HTMLElement
+    const row = target.closest<HTMLElement>('.epg-guide__row')
+    if (!row) return
+
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      const stops = Array.from(row.querySelectorAll<HTMLElement>('[tabindex="0"]'))
+      const idx = stops.indexOf(target)
+      if (idx === -1) return
+      const next = stops[idx + (e.key === 'ArrowRight' ? 1 : -1)]
+      if (next) {
+        e.preventDefault()
+        next.focus()
+        next.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
+      }
+      return
+    }
+
+    const rowIndex = Number(row.dataset.rowIndex)
+    if (Number.isNaN(rowIndex)) return
+    const direction = e.key === 'ArrowDown' ? 1 : -1
+    const targetRow = viewportRef.current?.querySelector<HTMLElement>(
+      `.epg-guide__row[data-row-index="${rowIndex + direction}"]`,
+    )
+    e.preventDefault()
+    if (!targetRow) {
+      // The target row is one step beyond the virtualizer's rendered window (its
+      // overscan is generous but finite). Nudge the scroll position the same
+      // direction so the window grows to cover it — the next press then lands
+      // normally — instead of leaving the key press with no visible effect.
+      viewportRef.current?.scrollBy({ top: direction * rowHeight, behavior: 'smooth' })
+      return
+    }
+
+    const isChannelColumn = target.classList.contains('epg-guide__channel')
+    const channelStop = targetRow.querySelector<HTMLElement>('.epg-guide__channel')
+    let landing: HTMLElement | null = channelStop
+    if (!isChannelColumn) {
+      const targetLeft = target.getBoundingClientRect().left
+      const boxes = Array.from(targetRow.querySelectorAll<HTMLElement>('.epg-guide__program'))
+      landing =
+        boxes.reduce<HTMLElement | null>((closest, el) => {
+          if (!closest) return el
+          const d = Math.abs(el.getBoundingClientRect().left - targetLeft)
+          const dClosest = Math.abs(closest.getBoundingClientRect().left - targetLeft)
+          return d < dClosest ? el : closest
+        }, null) ?? channelStop
+    }
+    if (landing) {
+      landing.focus()
+      landing.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
+    }
+  }, [rowHeight])
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget
@@ -416,18 +497,27 @@ export function EpgGuide({
   const scrollToNow = useCallback(() => {
     const el = viewportRef.current
     if (!el) return
-    el.scrollTo({ top: 0, behavior: 'smooth' })
-  }, [])
+    const playingId = sessionStorage.getItem('sl_last_viewed')
+    const rowIndex = playingId ? guideChannels.findIndex((c) => c.id === playingId) : -1
+    const top =
+      rowIndex >= 0 ? Math.max(0, rowIndex * rowHeight - el.clientHeight / 2 + rowHeight / 2) : el.scrollTop
+    const left = Math.max(0, nowOffset * PIXELS_PER_MINUTE - (el.clientWidth - sidebarWidth) / 2)
+    el.scrollTo({ top, left, behavior: 'smooth' })
+  }, [guideChannels, rowHeight, sidebarWidth, nowOffset])
 
   // Stable across filter edits: rows are memoized on this prop, so a new
   // identity here would re-render every visible row on each keystroke.
   const playlistRef = useRef<string[]>([])
+  const guideChannelsRef = useRef(guideChannels)
   useEffect(() => {
     playlistRef.current = guideChannels.map((c) => c.id)
+    guideChannelsRef.current = guideChannels
   }, [guideChannels])
 
   const handlePick = useCallback(
     (channelId: string) => {
+      const picked = guideChannelsRef.current.find((c) => c.id === channelId)
+      if (picked) prefetchPlaylist(picked)
       sessionStorage.setItem('sl_last_viewed', channelId)
       navigate(`/watch/${encodeURIComponent(channelId)}`, {
         state: { playlist: playlistRef.current, returnTo: '/guide' },
@@ -491,7 +581,12 @@ export function EpgGuide({
         </div>
       )}
 
-      <div className="epg-guide__grid" ref={viewportRef} onScroll={handleScroll}>
+      <div
+        className="epg-guide__grid"
+        ref={viewportRef}
+        onScroll={handleScroll}
+        onKeyDown={handleGuideKeyDown}
+      >
         <EpgTimeline
           marks={marks}
           gridWidth={gridWindow.width}
@@ -516,6 +611,7 @@ export function EpgGuide({
                 sidebarWidth={sidebarWidth}
                 top={(firstRowForWindow + i) * rowHeight}
                 rowHeight={rowHeight}
+                rowIndex={firstRowForWindow + i}
                 onPick={handlePick}
               />
             ))}

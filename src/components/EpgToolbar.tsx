@@ -8,6 +8,7 @@ import {
   facetBundle,
   hasActiveFilters,
 } from '../util/epgFilter'
+import { useChannels } from '../hooks/useChannels'
 import type { GuideFilters } from '../util/epgFilter'
 import { computeMatchSet, normalizeSearch } from '../util/searchText'
 import { FilterSheet } from './FilterSheet'
@@ -58,6 +59,7 @@ export function EpgToolbar({
   onToggleTranslate,
   onScrollToNow,
 }: Props) {
+  const { allChannels } = useChannels()
   const scope = useMemo(
     () => channels.filter((ch) => epgChannelIds.has(ch.id) && ch.stream),
     [channels, epgChannelIds],
@@ -72,8 +74,8 @@ export function EpgToolbar({
    * row through the same inline filter chain.
    */
   const matchSet = useMemo(
-    () => computeMatchSet(normalizeSearch(filters.search.trim())),
-    [filters.search],
+    () => computeMatchSet(normalizeSearch(filters.search.trim()), allChannels),
+    [filters.search, allChannels],
   )
 
   /**

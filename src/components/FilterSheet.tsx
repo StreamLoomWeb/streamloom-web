@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import type { LanguageOption } from '../util/language'
 import './FilterSheet.css'
 
@@ -54,6 +54,18 @@ export function FilterSheet({
   hasActiveFilters,
 }: FilterSheetProps) {
   const [countrySearch, setCountrySearch] = useState('')
+  const dialogRef = useRef<HTMLDialogElement>(null)
+
+  // <dialog>.showModal() is what gives this a focus trap and native
+  // Esc-to-close for free, instead of the hand-rolled backdrop this used
+  // to be (which let Esc fall through to the page's own "clear filters"
+  // shortcut — see useKeyboardNav's dialog[open] guard).
+  useEffect(() => {
+    const dialog = dialogRef.current
+    if (!dialog) return
+    if (isOpen && !dialog.open) dialog.showModal()
+    else if (!isOpen && dialog.open) dialog.close()
+  }, [isOpen])
 
   const filteredCountries = useMemo(() => {
     const q = countrySearch.trim().toLowerCase()
@@ -63,10 +75,15 @@ export function FilterSheet({
     )
   }, [availableCountries, countrySearch])
 
-  if (!isOpen) return null
-
   return (
-    <div className="filter-sheet-backdrop" onClick={onClose}>
+    <dialog
+      ref={dialogRef}
+      className="filter-sheet-backdrop"
+      onClose={onClose}
+      onClick={(e) => {
+        if (e.target === dialogRef.current) onClose()
+      }}
+    >
       <div className="filter-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="filter-sheet__drag-handle" />
 
@@ -239,6 +256,6 @@ export function FilterSheet({
           </button>
         </div>
       </div>
-    </div>
+    </dialog>
   )
 }

@@ -4,13 +4,14 @@ import { useChannels, useFavourites, useRecent } from '../hooks/useChannels'
 import type { EnrichedChannel } from '../hooks/useChannels'
 import { HeroSection } from '../components/HeroSection'
 import { CategoryRow } from '../components/CategoryRow'
+import { PicksRow } from '../components/PicksRow'
 import { SearchBar } from '../components/SearchBar'
 import { ChannelCard } from '../components/ChannelCard'
 import { FilterSheet } from '../components/FilterSheet'
 import { useKeyboardNav } from '../hooks/useKeyboardNav'
 import { getCountryName, getCountryFlag, formatCountryDisplay } from '../util/country'
 import { getLanguageName } from '../util/language'
-import { computeMatchSet, normalizeSearch } from '../util/searchText'
+import { computeMatchSet, matchesSearch, normalizeSearch } from '../util/searchText'
 import './Home.css'
 
 const PRIORITY_CATEGORIES = ['music', 'movies', 'cartoons', 'comedy', 'news', 'sports']
@@ -52,7 +53,10 @@ const GRID_BATCH_SIZE = 36
 
 export function Home() {
   const location = useLocation()
-  const { channels, categories, loading, error, refresh } = useChannels()
+  // `allChannels` is the list before the hidden/broken filters. The picks row
+  // needs it: a pinned channel is never hidden by a broken mark or by the user's
+  // hide-broken setting (ADR-0033 §3). It is also what the search index is keyed on.
+  const { channels, allChannels, categories, epgChannelIds, loading, error, refresh } = useChannels()
   const { favouriteIds } = useFavourites()
   const { recentIds, addRecent } = useRecent()
 
@@ -135,8 +139,8 @@ export function Home() {
    * intersection regardless of how many facets the screen shows.
    */
   const matchSet = useMemo(
-    () => computeMatchSet(normalizedSearch),
-    [normalizedSearch],
+    () => computeMatchSet(normalizedSearch, allChannels),
+    [normalizedSearch, allChannels],
   )
 
   /**
@@ -286,6 +290,27 @@ export function Home() {
 
   const handleWatch = useCallback((channelId: string) => addRecent(channelId), [addRecent])
 
+  /**
+   * Whether a channel matches the active Home filters (category/country/language/
+   * quality/favourites + search). Used to keep the Picks/Favourites/Recents rows
+   * visible under a filter, narrowed to their matches, instead of disappearing
+   * into the flat grid.
+   *
+   * `matchSet` is built from the trigram index over the live catalogue only
+   * (see useChannels/searchText), so it never contains a Picks row's
+   * fast-track or pending-snapshot channels — those ids don't exist in the
+   * index. Falling back to `matchesSearch` (a direct haystack scan, bypassing
+   * the index) for anything the set doesn't cover keeps a matching pin from
+   * being dropped by search the way ADR-0033 §3 already forbids for a broken
+   * mark.
+   */
+  const filterMatches = useCallback(
+    (ch: EnrichedChannel) =>
+      passesNonSearch(ch) &&
+      (!matchSet || matchSet.has(ch.id) || matchesSearch(ch, normalizedSearch)),
+    [passesNonSearch, matchSet, normalizedSearch],
+  )
+
   // Sync active filter selections to sessionStorage
   useEffect(() => {
     if (search) sessionStorage.setItem('sl_active_search', search)
@@ -378,6 +403,18 @@ export function Home() {
 
   const isGridMode = hasActiveFilter || Boolean(search.trim())
   const activeGridPlaylist = useMemo(() => activeGridChannels.map((c) => c.id), [activeGridChannels])
+
+  // Favourites/Recents narrowed to the active filters, for the grid-mode rows
+  // above. Picks narrows the same way, but inside PicksRow (see its `filter`
+  // prop) so a filtered-out pin never gets misread as "not yet published".
+  const filteredFavouriteChannels = useMemo(
+    () => (isGridMode ? favouriteChannels.filter(filterMatches) : []),
+    [isGridMode, favouriteChannels, filterMatches],
+  )
+  const filteredRecentChannels = useMemo(
+    () => (isGridMode ? recentChannels.filter(filterMatches) : []),
+    [isGridMode, recentChannels, filterMatches],
+  )
 
   const targetId =
     (location.state as { targetChannelId?: string } | null)?.targetChannelId ||
@@ -489,6 +526,12 @@ export function Home() {
                     <span className="active-chip__remove">✕</span>
                   </button>
                 )}
+                {effectiveLanguage && (
+                  <button className="active-chip" onClick={() => setSelectedLanguage(null)}>
+                    <span>🌐 {availableLanguages.find((l) => l.code === effectiveLanguage)?.name ?? effectiveLanguage}</span>
+                    <span className="active-chip__remove">✕</span>
+                  </button>
+                )}
                 <button className="active-chip__clear-all" onClick={clearFilters}>
                   Clear all
                 </button>
@@ -591,46 +634,73 @@ export function Home() {
 
           {/* Grid Mode: when any filter or search is active */}
           {isGridMode ? (
-            <section className="home-search-results fade-up">
-              <div className="home-search-results__title-bar">
-                <h2 className="home-search-results__title">
-                  {search.trim()
-                    ? `"${search}" — ${activeGridChannels.length} channels`
-                    : selectedCategory
-                      ? `${categories.find((c) => c.id === selectedCategory)?.name ?? 'Category'} — ${activeGridChannels.length} channels`
-                      : selectedCountry
-                        ? `${formatCountryDisplay(selectedCountry)} — ${activeGridChannels.length} channels`
-                        : `${activeGridChannels.length} channels`}
-                </h2>
-              </div>
-              <div className="home-search-results__grid">
-                {activeGridChannels.slice(0, gridLimit).map((ch) => (
-                  <ChannelCard key={ch.id} channel={ch} playlist={activeGridPlaylist} onWatch={handleWatch} />
-                ))}
-              </div>
+            <>
+              {/* Author's picks, favourites and recents stay visible under a
+                  filter, narrowed to their matches, rather than disappearing
+                  into the flat grid below. */}
+              <PicksRow channels={allChannels} onWatch={handleWatch} filter={filterMatches} epgChannelIds={epgChannelIds} />
 
-              {gridLimit < activeGridChannels.length && (
-                <div className="home-load-more">
-                  <button
-                    className="home-load-more__btn"
-                    onClick={() => setUserExpandedLimit((prev) => prev + GRID_BATCH_SIZE)}
-                  >
-                    Load More Channels ({activeGridChannels.length - gridLimit} remaining)
-                  </button>
-                </div>
+              {!showFavOnly && filteredFavouriteChannels.length > 0 && (
+                <CategoryRow title="♥ Favourites" channels={filteredFavouriteChannels} onWatch={handleWatch} epgChannelIds={epgChannelIds} />
               )}
-            </section>
+
+              {filteredRecentChannels.length > 0 && (
+                <CategoryRow title="▶ Continue Watching" channels={filteredRecentChannels} onWatch={handleWatch} epgChannelIds={epgChannelIds} />
+              )}
+
+              <section className="home-search-results fade-up">
+                <div className="home-search-results__title-bar">
+                  <h2 className="home-search-results__title">
+                    {search.trim()
+                      ? `"${search}" — ${activeGridChannels.length} channels`
+                      : selectedCategory
+                        ? `${categories.find((c) => c.id === selectedCategory)?.name ?? 'Category'} — ${activeGridChannels.length} channels`
+                        : selectedCountry
+                          ? `${formatCountryDisplay(selectedCountry)} — ${activeGridChannels.length} channels`
+                          : `${activeGridChannels.length} channels`}
+                  </h2>
+                </div>
+                {activeGridChannels.length === 0 ? (
+                  <div className="home-search-results__empty">
+                    <p>No channels match these filters.</p>
+                    <button className="active-chip__clear-all" onClick={clearFilters}>
+                      Clear filters
+                    </button>
+                  </div>
+                ) : (
+                  <div className="home-search-results__grid">
+                    {activeGridChannels.slice(0, gridLimit).map((ch) => (
+                      <ChannelCard key={ch.id} channel={ch} epgChannelIds={epgChannelIds} playlist={activeGridPlaylist} onWatch={handleWatch} />
+                    ))}
+                  </div>
+                )}
+
+                {gridLimit < activeGridChannels.length && (
+                  <div className="home-load-more">
+                    <button
+                      className="home-load-more__btn"
+                      onClick={() => setUserExpandedLimit((prev) => prev + GRID_BATCH_SIZE)}
+                    >
+                      Load More Channels ({activeGridChannels.length - gridLimit} remaining)
+                    </button>
+                  </div>
+                )}
+              </section>
+            </>
           ) : (
             /* Normal row mode */
             <>
+              {/* Author's picks (ADR-0033): never filtered by a broken mark. */}
+              <PicksRow channels={allChannels} onWatch={handleWatch} epgChannelIds={epgChannelIds} />
+
               {/* Favourites row */}
               {favouriteChannels.length > 0 && (
-                <CategoryRow title="♥ Favourites" channels={favouriteChannels} onWatch={handleWatch} />
+                <CategoryRow title="♥ Favourites" channels={favouriteChannels} onWatch={handleWatch} epgChannelIds={epgChannelIds} />
               )}
 
               {/* Recently watched */}
               {recentChannels.length > 0 && (
-                <CategoryRow title="▶ Continue Watching" channels={recentChannels} onWatch={handleWatch} />
+                <CategoryRow title="▶ Continue Watching" channels={recentChannels} onWatch={handleWatch} epgChannelIds={epgChannelIds} />
               )}
 
               {/* Priority Category Rows */}
@@ -644,6 +714,7 @@ export function Home() {
                     title={`${icon} ${cat.name}`}
                     channels={chans}
                     onWatch={handleWatch}
+                    epgChannelIds={epgChannelIds}
                   />
                 )
               })}

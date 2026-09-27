@@ -1,0 +1,56 @@
+{
+  "catalogue/g1757000000000/categories.json.br": {
+    "contentType": "application/json",
+    "contentEncoding": "br",
+    "cacheControl": "public, max-age=31536000, immutable",
+    "body": "[{\"id\":\"news\",\"name\":\"News\"},{\"id\":\"sports\",\"name\":\"Sports\"}]"
+  },
+  "catalogue/g1757000000000/channels.json.br": {
+    "contentType": "application/json",
+    "contentEncoding": "br",
+    "cacheControl": "public, max-age=31536000, immutable",
+    "body": "[{\"id\":\"AlphaNews.in\",\"name\":\"Alpha News\",\"logo\":\"https://example.test/alpha.png\",\"country\":\"IN\",\"network\":\"Alpha\",\"website\":null,\"languages\":[\"hin\"],\"alt_names\":[\"Alpha\"],\"is_nsfw\":false,\"is_active\":true,\"channel_categories\":[{\"category_id\":\"news\"}]},{\"id\":\"BetaSports.in\",\"name\":\"Beta Sports\",\"logo\":null,\"country\":\"IN\",\"network\":null,\"website\":\"https://example.test/beta\",\"languages\":[\"hin\",\"eng\"],\"alt_names\":[],\"is_nsfw\":false,\"is_active\":true,\"channel_categories\":[{\"category_id\":\"sports\"},{\"category_id\":\"news\"}]},{\"id\":\"GammaWorld.uk\",\"name\":\"Gamma World\",\"logo\":\"https://example.test/gamma.png\",\"country\":\"GB\",\"network\":null,\"website\":null,\"languages\":[\"eng\"],\"alt_names\":[],\"is_nsfw\":false,\"is_active\":true,\"channel_categories\":[]}]"
+  },
+  "catalogue/g1757000000000/countries.json.br": {
+    "contentType": "application/json",
+    "contentEncoding": "br",
+    "cacheControl": "public, max-age=31536000, immutable",
+    "body": "[{\"code\":\"IN\",\"name\":\"India\",\"flag\":\"🇮🇳\"},{\"code\":\"GB\",\"name\":\"United Kingdom\",\"flag\":\"🇬🇧\"}]"
+  },
+  "catalogue/g1757000000000/epg/AlphaNews.in.json.br": {
+    "contentType": "application/json",
+    "contentEncoding": "br",
+    "cacheControl": "public, max-age=31536000, immutable",
+    "body": "[{\"id\":\"p1\",\"channel_id\":\"AlphaNews.in\",\"title\":\"Morning News\",\"description\":\"Headlines\",\"start_time\":\"2026-09-20T06:00:00Z\",\"end_time\":\"2026-09-20T07:00:00Z\"},{\"id\":\"p2\",\"channel_id\":\"AlphaNews.in\",\"title\":\"Bulletin\",\"description\":null,\"start_time\":\"2026-09-20T07:00:00Z\",\"end_time\":\"2026-09-20T07:30:00Z\"}]"
+  },
+  "catalogue/g1757000000000/epg/GammaWorld.uk.json.br": {
+    "contentType": "application/json",
+    "contentEncoding": "br",
+    "cacheControl": "public, max-age=31536000, immutable",
+    "body": "[{\"id\":\"p3\",\"channel_id\":\"GammaWorld.uk\",\"title\":\"World Report\",\"description\":null,\"start_time\":\"2026-09-20T06:30:00Z\",\"end_time\":\"2026-09-20T07:30:00Z\"}]"
+  },
+  "catalogue/g1757000000000/epg/ids.json.br": {
+    "contentType": "application/json",
+    "contentEncoding": "br",
+    "cacheControl": "public, max-age=31536000, immutable",
+    "body": "[\"AlphaNews.in\",\"GammaWorld.uk\"]"
+  },
+  "catalogue/g1757000000000/epg/summary.json.br": {
+    "contentType": "application/json",
+    "contentEncoding": "br",
+    "cacheControl": "public, max-age=31536000, immutable",
+    "body": "[[\"AlphaNews.in\",[[548067,60,\"Morning News\"],[548127,30,\"Bulletin\"]]],[\"GammaWorld.uk\",[[548097,60,\"World Report\"]]]]"
+  },
+  "catalogue/g1757000000000/streams.json.br": {
+    "contentType": "application/json",
+    "contentEncoding": "br",
+    "cacheControl": "public, max-age=31536000, immutable",
+    "body": "[{\"channel_id\":\"AlphaNews.in\",\"url\":\"https://example.test/alpha.m3u8\",\"quality\":\"720p\",\"timeshift\":null,\"status\":\"active\",\"user_agent\":\"Mozilla/5.0\",\"referrer\":null},{\"channel_id\":\"BetaSports.in\",\"url\":\"https://example.test/beta.m3u8\",\"quality\":null,\"timeshift\":null,\"status\":\"active\",\"user_agent\":null,\"referrer\":\"https://example.test/\"},{\"channel_id\":\"GammaWorld.uk\",\"url\":\"https://example.test/gamma.m3u8\",\"quality\":\"1080p\",\"timeshift\":null,\"status\":\"active\",\"user_agent\":null,\"referrer\":null}]"
+  },
+  "catalogue/meta.json": {
+    "contentType": "application/json",
+    "contentEncoding": null,
+    "cacheControl": "public, max-age=60, stale-while-revalidate=3600",
+    "body": "{\"generation\":1757000000000,\"version\":2,\"layout\":1,\"syncedAt\":\"2025-09-04T15:33:20.000Z\",\"hash\":\"050a5a2b3c81b369aa6de0c003a6b754b3dd9cd3e1af4af97531c5d0ff379ffd\",\"guide\":true,\"counts\":{\"channels\":3,\"streams\":3,\"categories\":2,\"countries\":2,\"epgChannels\":2}}"
+  }
+}

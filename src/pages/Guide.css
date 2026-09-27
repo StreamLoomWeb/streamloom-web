@@ -5,7 +5,8 @@
   padding-top: calc(var(--nav-height) + var(--sat));
 }
 
-@media (max-width: 767px) {
+/* Shared 600/840/1200 scale, see src/styles/breakpoints.css. */
+@media (max-width: 839px) {
   .guide-page {
     padding-bottom: calc(var(--mobile-tab-height) + var(--sab));
   }

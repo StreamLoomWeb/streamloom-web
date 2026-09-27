@@ -1,11 +1,14 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import Hls from 'hls.js'
+import Hls, { type PlaylistLoaderConstructor } from 'hls.js'
 import type { EnrichedChannel } from '../hooks/useChannels'
-import type { EpgProgram } from '../api/types'
 import { useEpg, useFavourites, useRecent } from '../hooks/useChannels'
-import { formatCountryDisplay } from '../util/country'
+import { useOccasionAccessory } from '../api/occasion'
+import { FixerBotMascot } from './FixerBotMascot'
+import { getCurrentProgram, getNextProgram } from '../util/epgNow'
 import { LOGO_SIZE, logoUrl, handleLogoError } from '../util/logo'
+import { markPlayerLogoForTransition } from '../util/viewTransition'
 import { orderStreamsForPlayback, rankResolution } from '../util/resolution'
 import {
   getProxyStreamUrl,
@@ -24,12 +27,20 @@ import {
   recordStreamFailure,
 } from '../util/streamFailure'
 import type { FailureClass } from '../util/streamFailure'
+import { rememberBandwidth, startingBandwidth } from '../util/bandwidth'
+import { preconnectChannel } from '../util/preconnect'
+import { HandoffLoader } from '../util/handoffLoader'
+import { MANIFEST_TIMEOUT_MS } from '../util/playlistPrefetch'
+import { MiniGuideRow } from './MiniGuideRow'
+import { useDocumentPip } from '../hooks/useDocumentPip'
 import './VideoPlayer.css'
 
 interface Props {
   channel: EnrichedChannel
   allChannels: EnrichedChannel[]
   returnTo?: string
+  /** Channel ids with a published schedule (epg/ids.json). Gates the mini-guide's now/next fetch. */
+  epgChannelIds?: Set<string>
 }
 
 export interface MediaTrackItem {
@@ -39,13 +50,23 @@ export interface MediaTrackItem {
   type?: string
 }
 
-function getCurrentProgram(programs: EpgProgram[], nowMs: number): EpgProgram | undefined {
-  return programs.find((p) => {
-    const start = new Date(p.start_time).getTime()
-    const end = new Date(p.end_time).getTime()
-    return nowMs >= start && nowMs < end
-  })
-}
+/*
+ * Watchdogs judge progress, not elapsed time. A load that receives no media bytes for
+ * the idle window is dead and the next attempt is tried, exactly as fast as before; a
+ * load whose bytes are still arriving on a slow link is left to finish, up to the cap,
+ * instead of being torn down and restarted from zero on another path.
+ */
+/** Before the first frame: longest without a media byte before trying the next attempt. */
+const START_IDLE_MS = 7000
+/**
+ * Before the first frame: longest a slow but moving load may take. Just past hls.js's
+ * own fragLoadingTimeOut (12 s, below), beyond which it restarts the fragment anyway.
+ */
+const START_CAP_MS = 13000
+/** After playback: longest a stall may go without a media byte. */
+const STALL_IDLE_MS = 8000
+/** After playback: longest a stall may last while bytes trickle in. */
+const STALL_CAP_MS = 20000
 
 /** Why each candidate of one channel failed, so exhaustion can be judged as a whole. */
 interface FailureEvidence {
@@ -54,18 +75,23 @@ interface FailureEvidence {
   verdicts: Map<number, FailureClass>
 }
 
-export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
+export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelIds }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
+  const videoHostRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const playerLogoRef = useRef<HTMLImageElement>(null)
   const hlsRef = useRef<Hls | null>(null)
   const navigate = useNavigate()
   const { programs } = useEpg(channel.id)
   const { isFavourite, toggle } = useFavourites()
   const { addRecent } = useRecent()
+  const occasionAccessory = useOccasionAccessory()
 
   const [isPlaying, setIsPlaying] = useState(true)
+  const [isPip, setIsPip] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isZoomed, setIsZoomed] = useState(false)
   const [isBuffering, setIsBuffering] = useState(true)
   const [hasError, setHasError] = useState(false)
   const [networkIssue, setNetworkIssue] = useState(false)
@@ -88,6 +114,13 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
   const [showAudioMenu, setShowAudioMenu] = useState(false)
   const subtitleMenuRef = useRef<HTMLDivElement>(null)
   const audioMenuRef = useRef<HTMLDivElement>(null)
+
+  // Only the mount from a card's click is a view transition's "after" state;
+  // switching channels within an already-open player has none in flight.
+  useLayoutEffect(() => {
+    markPlayerLogoForTransition(playerLogoRef.current)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const isHudVisible = showHud || isBuffering
 
@@ -135,9 +168,25 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
   const stallTimer = useRef<number | null>(null)
   const mediaRecoveryAttempts = useRef(0)
   const hasPlayedSuccessfully = useRef(false)
+  /** When the last media byte arrived; playlist refreshes do not count. */
+  const lastMediaByteAt = useRef(0)
   const switchChannelCleanlyRef = useRef<(target: EnrichedChannel) => void>(() => {})
   const failoverToNextAttemptRef = useRef<(cause: FailureClass) => void>(() => {})
   const failureEvidenceRef = useRef<FailureEvidence | null>(null)
+
+  /** Tears down the engine, keeping its bandwidth measurement for the next start. */
+  const destroyHls = useCallback(() => {
+    const hls = hlsRef.current
+    if (!hls) return
+    // Only while it is actually playing: a teardown after a stall measured one slow
+    // origin, not this device's connection.
+    const v = videoRef.current
+    if (hasPlayedSuccessfully.current && v && !v.paused && v.readyState >= 3) rememberBandwidth(hls.bandwidthEstimate)
+    hls.stopLoad()
+    hls.detachMedia()
+    hls.destroy()
+    hlsRef.current = null
+  }, [])
 
   if (channel.id !== prevChannelId) {
     setPrevChannelId(channel.id)
@@ -249,6 +298,26 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
     const container = containerRef.current
     if (!container) return
 
+    // iOS Safari has no element fullscreen at all; it exposes fullscreen
+    // only on the <video> itself, natively (own play/pause/scrub HUD, no
+    // fullscreenchange event or document.fullscreenElement either — tracked
+    // instead by the video's own webkitbeginfullscreen/webkitendfullscreen
+    // listeners set up below).
+    type IosVideo = HTMLVideoElement & {
+      webkitEnterFullscreen?: () => void
+      webkitExitFullscreen?: () => void
+      webkitDisplayingFullscreen?: boolean
+    }
+    const video = videoRef.current as IosVideo | null
+    if (!container.requestFullscreen && video?.webkitEnterFullscreen) {
+      if (video.webkitDisplayingFullscreen) {
+        video.webkitExitFullscreen?.()
+      } else {
+        video.webkitEnterFullscreen()
+      }
+      return
+    }
+
     if (!document.fullscreenElement) {
       container.requestFullscreen().then(() => {
         setIsFullscreen(true)
@@ -256,6 +325,8 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
         hideHudTimer.current = window.setTimeout(() => {
           setShowHud(false)
         }, 1200)
+        const lock = screen.orientation?.lock
+        if (lock) lock.call(screen.orientation, 'landscape').catch(() => {})
       }).catch(() => {})
     } else {
       document.exitFullscreen().then(() => {
@@ -264,6 +335,11 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
       }).catch(() => {})
     }
   }, [])
+
+  const toggleZoom = useCallback(() => {
+    setIsZoomed((v) => !v)
+    resetHudTimer()
+  }, [resetHudTimer])
 
   useEffect(() => {
     function onFullscreenChange() {
@@ -282,6 +358,61 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
     return () => document.removeEventListener('fullscreenchange', onFullscreenChange)
   }, [])
 
+  // iOS Safari never fires 'fullscreenchange' for webkitEnterFullscreen — it's
+  // tracked only through these two events on the <video> itself. Without this,
+  // isFullscreen (and the button's icon) never reflects native fullscreen at all.
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    function onBegin() {
+      setIsFullscreen(true)
+    }
+    function onEnd() {
+      setIsFullscreen(false)
+      setShowHud(true)
+    }
+    video.addEventListener('webkitbeginfullscreen', onBegin)
+    video.addEventListener('webkitendfullscreen', onEnd)
+    return () => {
+      video.removeEventListener('webkitbeginfullscreen', onBegin)
+      video.removeEventListener('webkitendfullscreen', onEnd)
+    }
+  }, [])
+
+  // Native video PiP (togglePiP below): tracks isPip via the real browser events
+  // rather than an app-held flag, and closes this video's own PiP session on
+  // unmount so a leftover session from a previous VideoPlayer instance can't make
+  // togglePiP's identity check below take the wrong branch on the next open.
+  useLayoutEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    const onEnter = () => setIsPip(true)
+    const onLeave = () => {
+      setIsPip(false)
+      // Chrome's native PiP close ("X") pauses the video as part of closing the
+      // window — resume right away so returning to the tab is seamless instead
+      // of requiring an explicit play click. Its own "back to tab" control never
+      // pauses, so this is a no-op there.
+      if (video.paused) {
+        if (stallTimer.current) {
+          window.clearTimeout(stallTimer.current)
+          stallTimer.current = null
+        }
+        video.play().catch(() => {})
+      }
+      setIsPlaying(true)
+    }
+    video.addEventListener('enterpictureinpicture', onEnter)
+    video.addEventListener('leavepictureinpicture', onLeave)
+    return () => {
+      video.removeEventListener('enterpictureinpicture', onEnter)
+      video.removeEventListener('leavepictureinpicture', onLeave)
+      if (document.pictureInPictureElement === video) {
+        document.exitPictureInPicture().catch(() => {})
+      }
+    }
+  }, [])
+
   const handleMouseMove = useCallback(() => {
     setShowHud(true)
     if (hideHudTimer.current) window.clearTimeout(hideHudTimer.current)
@@ -294,7 +425,7 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
     const v = videoRef.current
     if (!v) return
     try {
-      if (document.pictureInPictureElement) {
+      if (document.pictureInPictureElement === v) {
         await document.exitPictureInPicture()
       } else if (document.pictureInPictureEnabled) {
         await v.requestPictureInPicture()
@@ -304,6 +435,59 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
     }
     resetHudTimer()
   }, [resetHudTimer])
+
+  // B9: Document PiP mini-player (desktop Chrome/Edge only — the hook feature-detects
+  // and `docPipSupported` stays false everywhere else, so the toggle button below never
+  // renders on phone, TV or Safari). Unlike the native video-PiP button above, this
+  // opens a real window we control, so it can carry zap buttons instead of just
+  // play/pause. Moves the actual <video> node into that window rather than mounting a
+  // second one, so playback (buffer, currentTime, the attached hls.js instance)
+  // survives the move.
+  const restoreVideoInPlace = useCallback(() => {
+    const video = videoRef.current
+    const host = videoHostRef.current
+    if (!video || !host) return
+    video.style.width = ''
+    video.style.height = ''
+    video.style.objectFit = ''
+    video.style.display = ''
+    // Reinsert as host's next sibling — its original JSX position — rather than
+    // into host itself: React still thinks of video as a sibling of host, not a
+    // child of it, and an `appendChild` into host here would leave that fiber
+    // pointing at a DOM node video is no longer directly under, which throws on
+    // the next unmount (removeChild on a node that isn't there any more).
+    host.insertAdjacentElement('afterend', video)
+  }, [])
+
+  const { isSupported: docPipSupported, pipWindow, open: openDocPip, close: closeDocPip } = useDocumentPip(restoreVideoInPlace)
+
+  // Runs the move-in when a window opens (and, redundantly but harmlessly, the
+  // move-back on close/unmount — the real move-back already happened synchronously in
+  // useDocumentPip's close() or pagehide handler, via restoreVideoInPlace, so a
+  // browsing-context teardown never races a React effect for playback state; this
+  // cleanup just keeps the DOM tidy for paths that go through neither, like a
+  // StrictMode double-invoke).
+  useEffect(() => {
+    if (!pipWindow) return
+    const video = videoRef.current
+    if (!video) return
+    try {
+      pipWindow.document.body.appendChild(video)
+    } catch (err) {
+      // The window `open()` handed back wasn't actually usable (e.g. its document
+      // was already on its way out) — nothing to reparent into, so leave the video
+      // where it is rather than throwing out of a passive effect. Logged rather
+      // than swallowed: if this is where the mini-player is actually failing,
+      // this is the one place that would know why.
+      console.error('[document-pip] could not move the video into the mini-player window', err)
+      return
+    }
+    video.style.width = '100%'
+    video.style.height = 'calc(100% - 44px)'
+    video.style.objectFit = 'contain'
+    video.style.display = 'block'
+    return restoreVideoInPlace
+  }, [pipWindow, restoreVideoInPlace])
 
   const showToast = useCallback((msg: string, duration = 2500) => {
     setToastMessage(msg)
@@ -469,12 +653,7 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
       stallTimer.current = null
     }
     // Immediately stop current HLS loader and media buffer to prevent lockup
-    if (hlsRef.current) {
-      hlsRef.current.stopLoad()
-      hlsRef.current.detachMedia()
-      hlsRef.current.destroy()
-      hlsRef.current = null
-    }
+    destroyHls()
     const video = videoRef.current
     if (video) {
       video.onloadedmetadata = null
@@ -502,7 +681,7 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
         returnTo,
       },
     })
-  }, [returnTo, navigate])
+  }, [returnTo, navigate, destroyHls])
 
   const switchChannelCleanly = useCallback((target: EnrichedChannel) => {
     cancelCountdown()
@@ -524,12 +703,7 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
       window.clearTimeout(connectionTimeoutTimer.current)
       connectionTimeoutTimer.current = null
     }
-    if (hlsRef.current) {
-      hlsRef.current.stopLoad()
-      hlsRef.current.detachMedia()
-      hlsRef.current.destroy()
-      hlsRef.current = null
-    }
+    destroyHls()
     const video = videoRef.current
     if (video) {
       video.onloadedmetadata = null
@@ -538,8 +712,14 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
     }
     sessionStorage.setItem('sl_last_viewed', channel.id)
     ;(document.activeElement as HTMLElement)?.blur?.()
+    // Close the mini-player (a no-op when none is open). closeDocPip() moves the
+    // <video> back into this document and clears the hook's state synchronously,
+    // before navigate() below unmounts this tree, so nothing depends on the
+    // window's own 'pagehide' arriving first. It reads the hook's ref, not the
+    // `pipWindow` render value, so a stale closure can't skip it.
+    closeDocPip()
     navigate(returnTo, { state: { targetChannelId: channel.id } })
-  }, [cancelCountdown, channel.id, returnTo, navigate])
+  }, [cancelCountdown, channel.id, returnTo, navigate, destroyHls, closeDocPip])
 
   // The user's own choice to drop this channel from every list; undone in Settings.
   const handleHideChannel = useCallback(() => {
@@ -566,33 +746,20 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
   const channelIdx = allChannels.findIndex((c) => c.id === channel.id)
 
   /**
-   * Warms the next channel's manifest while the current channel still plays.
-   *
-   * HLS spends its first 300-800ms fetching and parsing the manifest. Firing a
-   * single low-priority request for the resolved URL ahead of time lets the edge
-   * and browser cache the response, so switching feels instant.
+   * Once this channel plays, opens connections to the channels either side of it, so
+   * zapping to one skips DNS, TCP and TLS. This replaced a manifest fetch that warmed
+   * nothing: live playlists are not cacheable, and a proxied one cost a Function
+   * invocation and competed with the current channel's own start.
    */
   useEffect(() => {
-    if (allChannels.length <= 1) return
+    if (isBuffering || allChannels.length <= 1) return
     const idx = allChannels.findIndex((c) => c.id === channel.id)
-    const neighbour = idx >= 0 ? allChannels[(idx + 1) % allChannels.length] : allChannels[0]
-    if (!neighbour || neighbour.id === channel.id) return
-
-    const timer = window.setTimeout(() => {
-      const streams = neighbour.streams && neighbour.streams.length > 0
-        ? neighbour.streams
-        : (neighbour.stream ? [neighbour.stream] : [])
-      const cached = getCachedWorkingStream(neighbour.id)
-      const ordered = orderStreamsForPlayback(streams, cached?.url)
-      const target = ordered[0]
-      if (!target?.url) return
-      const useProxy = (cached && cached.url === target.url ? cached.useProxy : false) || isMixedContent(target.url)
-      const warmUrl = useProxy ? getProxyStreamUrl(target.url, null, null, [], neighbour.id) : target.url
-      fetch(warmUrl, { method: 'GET', priority: 'low', cache: 'force-cache' } as RequestInit).catch(() => {})
-    }, 1500)
-
-    return () => window.clearTimeout(timer)
-  }, [channel.id, allChannels])
+    if (idx < 0) return
+    for (const step of [1, -1]) {
+      const neighbour = allChannels[(idx + step + allChannels.length) % allChannels.length]
+      if (neighbour && neighbour.id !== channel.id) preconnectChannel(neighbour)
+    }
+  }, [channel.id, allChannels, isBuffering])
 
   // Cycle within filtered list in the same order shown, with wraparound
   const prevChannel = useMemo(() => {
@@ -816,12 +983,21 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
       if (!isDisposed) setIsSlowConnecting(true)
     }, 4500)
 
-    // Failover watchdog timer: if stream not parsed / buffered in 7s, trigger failover
-    failoverTimer.current = window.setTimeout(() => {
-      if (!isDisposed) {
-        failoverToNextAttemptRef.current('inconclusive')
+    // Failover watchdog: re-checks until media stops arriving or the cap is reached.
+    const attemptStart = performance.now()
+    lastMediaByteAt.current = attemptStart
+    const checkStart = () => {
+      if (isDisposed) return
+      const now = performance.now()
+      const idle = now - lastMediaByteAt.current
+      const left = START_CAP_MS - (now - attemptStart)
+      if (idle < START_IDLE_MS && left > 0) {
+        failoverTimer.current = window.setTimeout(checkStart, Math.min(START_IDLE_MS - idle, left))
+        return
       }
-    }, 7000)
+      failoverToNextAttemptRef.current('inconclusive')
+    }
+    failoverTimer.current = window.setTimeout(checkStart, START_IDLE_MS)
 
     const onPlaybackSuccess = () => {
       if (isDisposed) return
@@ -866,12 +1042,7 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
     }
 
     // Stop and cleanup previous HLS instance
-    if (hlsRef.current) {
-      hlsRef.current.stopLoad()
-      hlsRef.current.detachMedia()
-      hlsRef.current.destroy()
-      hlsRef.current = null
-    }
+    destroyHls()
 
     const syncNativeTextTracks = () => {
       if (isDisposed || !video.textTracks) return
@@ -924,10 +1095,14 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
         liveMaxLatencyDurationCount: 4,
         startFragPrefetch: true,
         startLevel: -1,
-        abrEwmaDefaultEstimate: 5_000_000,
-        // Start on the highest level so a good connection never ramps up from 360p.
+        // Start on the level this device's last measured speed sustains, so a good
+        // connection never ramps up from 360p and a slow one never starts on 1080p.
+        abrEwmaDefaultEstimate: startingBandwidth(),
         testBandwidth: false,
-        manifestLoadingTimeOut: 10000,
+        // The first manifest request takes the playlist fetched when the channel was tapped.
+        // hls.js types its default loader for every context; a playlist loader is one.
+        pLoader: HandoffLoader as unknown as PlaylistLoaderConstructor,
+        manifestLoadingTimeOut: MANIFEST_TIMEOUT_MS,
         manifestLoadingMaxRetry: 2,
         manifestLoadingRetryDelay: 500,
         levelLoadingTimeOut: 10000,
@@ -937,6 +1112,15 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
         renderTextTracksNatively: true,
         enableCEA708Captions: true,
         xhrSetup: (xhr: XMLHttpRequest) => {
+          // Media bytes (not playlists, which keep refreshing on a stuck live stream,
+          // nor error bodies) are what tells the watchdogs a slow load is still alive.
+          // hls.js loads fragments as arraybuffer and playlists as text, whatever
+          // Content-Type the origin sends.
+          xhr.addEventListener('progress', () => {
+            if (xhr.responseType === 'arraybuffer' && xhr.status >= 200 && xhr.status < 300) {
+              lastMediaByteAt.current = performance.now()
+            }
+          })
           xhr.addEventListener('readystatechange', () => {
             // Guard against HTML payloads (e.g. SPA index.html returned by unconfigured proxy)
             if (xhr.readyState === 4 && xhr.status === 200) {
@@ -1081,6 +1265,17 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
       hlsRef.current = hls
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
       video.src = targetUrl
+      // Native HLS (Safari) has no loader hook. Its progress event can fire for playlist
+      // polling too, so only a buffer that actually grew counts as media arriving.
+      let bufferedEnd = 0
+      video.onprogress = () => {
+        const b = video.buffered
+        const end = b.length > 0 ? b.end(b.length - 1) : 0
+        if (end > bufferedEnd) {
+          bufferedEnd = end
+          lastMediaByteAt.current = performance.now()
+        }
+      }
       video.onloadedmetadata = () => {
         syncNativeTextTracks()
         video.play().catch(() => setIsPlaying(false))
@@ -1119,19 +1314,15 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
         window.clearTimeout(stallTimer.current)
         stallTimer.current = null
       }
-      if (hlsRef.current) {
-        hlsRef.current.stopLoad()
-        hlsRef.current.detachMedia()
-        hlsRef.current.destroy()
-        hlsRef.current = null
-      }
+      destroyHls()
       video.textTracks?.removeEventListener?.('addtrack', syncNativeTextTracks)
       video.textTracks?.removeEventListener?.('change', syncNativeTextTracks)
       video.onloadedmetadata = null
       video.onplaying = null
       video.onerror = null
+      video.onprogress = null
     }
-  }, [channel.id, activeStreamIdx, isProxied, retryNonce, channelStreams, channel.stream, addRecent])
+  }, [channel.id, activeStreamIdx, isProxied, retryNonce, channelStreams, channel.stream, addRecent, destroyHls])
 
   // Keybindings: attached once with stable ref to guarantee zero dropped key events
   const onKeyRef = useRef<(e: KeyboardEvent) => void>(() => {})
@@ -1157,14 +1348,43 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
         setShowChannelList(false)
         return
       }
-      // Don't hijack vertical arrows when browsing the channel list drawer
-      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      // Don't hijack any arrow key when browsing the channel list drawer —
+      // it's the drawer's own list to navigate, not the HUD's.
+      if (
+        e.key === 'ArrowUp' ||
+        e.key === 'ArrowDown' ||
+        e.key === 'ArrowLeft' ||
+        e.key === 'ArrowRight'
+      ) {
         return
       }
     }
 
+    // TV remote model: with the HUD hidden, up/down are a dedicated channel-zap
+    // D-pad; with it showing, all four arrows move focus between HUD controls
+    // instead, so the controls are reachable at all.
+    const isArrowKey =
+      e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight'
+    const hudControls = () =>
+      Array.from(
+        containerRef.current?.querySelectorAll<HTMLElement>(
+          '.player__hud button, .player__hud [tabindex]:not([tabindex="-1"])'
+        ) ?? []
+      ).filter((el) => el.offsetParent !== null)
+
+    if (isHudVisible && isArrowKey) {
+      e.preventDefault()
+      const controls = hudControls()
+      if (controls.length) {
+        const delta = e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : 1
+        const current = controls.indexOf(document.activeElement as HTMLElement)
+        const next = current === -1 ? (delta === 1 ? 0 : controls.length - 1) : (current + delta + controls.length) % controls.length
+        controls[next].focus()
+      }
+      return
+    }
+
     if (
-      e.key === 'ArrowLeft' ||
       e.key === 'ArrowUp' ||
       e.key === '[' ||
       e.key === 'p' ||
@@ -1176,7 +1396,6 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
       e.preventDefault()
       goToPrevChannel()
     } else if (
-      e.key === 'ArrowRight' ||
       e.key === 'ArrowDown' ||
       e.key === ']' ||
       e.key === 'n' ||
@@ -1191,6 +1410,9 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
       e.preventDefault()
       handleBack()
     } else if (e.key === ' ') {
+      // A focused HUD button owns Space itself (native activation); only
+      // treat it as play/pause when nothing in the HUD has focus.
+      if (isHudVisible && hudControls().includes(document.activeElement as HTMLElement)) return
       e.preventDefault()
       togglePlayPause()
     } else if (e.key === 'f' || e.key === 'F') {
@@ -1205,11 +1427,15 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
     } else if (e.key === 'a' || e.key === 'A') {
       e.preventDefault()
       cycleAudioTracks()
+    } else if (e.key === 'g' || e.key === 'G') {
+      e.preventDefault()
+      setShowChannelList((v) => !v)
     }
   }, [
     showChannelList,
     showSubtitleMenu,
     showAudioMenu,
+    isHudVisible,
     handleMouseMove,
     goToPrevChannel,
     goToNextChannel,
@@ -1234,13 +1460,59 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
 
-  const [currentTimestamp] = useState(() => Date.now())
+  const [currentTimestamp, setCurrentTimestamp] = useState(() => Date.now())
+  useEffect(() => {
+    const tick = () => setCurrentTimestamp(Date.now())
+    tick()
+    const id = window.setInterval(tick, 30_000)
+    return () => window.clearInterval(id)
+  }, [channel.id])
   const nowPlaying = useMemo(() => getCurrentProgram(programs, currentTimestamp), [programs, currentTimestamp])
-  const nextProgram = useMemo(
-    () => programs.find((p) => new Date(p.start_time).getTime() > currentTimestamp),
-    [programs, currentTimestamp]
-  )
+  const nextProgram = useMemo(() => getNextProgram(programs, currentTimestamp), [programs, currentTimestamp])
   const fav = isFavourite(channel.id)
+
+  // Mini-guide row order (S3): the playing channel first, then the rest of the
+  // playlist in their existing order, wrapping around.
+  const guideChannels = useMemo(() => {
+    const idx = allChannels.findIndex((c) => c.id === channel.id)
+    if (idx <= 0) return allChannels
+    return [...allChannels.slice(idx), ...allChannels.slice(0, idx)]
+  }, [allChannels, channel.id])
+
+  const handleGuidePick = useCallback(
+    (picked: EnrichedChannel) => {
+      setShowChannelList(false)
+      targetChannelIdRef.current = picked.id
+      switchChannelCleanly(picked)
+    },
+    [switchChannelCleanly],
+  )
+
+  // Lock-screen, hardware-key and PiP transport controls. previous/next map
+  // to zapping, same as the keyboard shortcuts.
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return
+    const artwork = logoUrl(channel.logo)
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: channel.name,
+      artist: nowPlaying?.title ?? '',
+      artwork: artwork ? [{ src: artwork, sizes: `${LOGO_SIZE}x${LOGO_SIZE}`, type: 'image/webp' }] : [],
+    })
+    navigator.mediaSession.setActionHandler('play', togglePlayPause)
+    navigator.mediaSession.setActionHandler('pause', togglePlayPause)
+    navigator.mediaSession.setActionHandler('previoustrack', goToPrevChannel)
+    navigator.mediaSession.setActionHandler('nexttrack', goToNextChannel)
+    return () => {
+      navigator.mediaSession.setActionHandler('play', null)
+      navigator.mediaSession.setActionHandler('pause', null)
+      navigator.mediaSession.setActionHandler('previoustrack', null)
+      navigator.mediaSession.setActionHandler('nexttrack', null)
+    }
+  }, [channel.id, channel.name, channel.logo, nowPlaying?.title, togglePlayPause, goToPrevChannel, goToNextChannel])
+
+  useEffect(() => {
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused'
+  }, [isPlaying])
 
   return (
     <div
@@ -1249,20 +1521,39 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
       onMouseMove={handleMouseMove}
       onTouchStart={handleMouseMove}
     >
+      <div className="player__video-host" ref={videoHostRef} />
       <video
         ref={videoRef}
-        className="player__video"
+        className={`player__video${isZoomed ? ' player__video--zoomed' : ''}`}
         autoPlay
         playsInline
-        onWaiting={() => {
+        onWaiting={(e) => {
+          if (e.currentTarget.paused) return
           setIsBuffering(true)
           if (hasPlayedSuccessfully.current && !stallTimer.current) {
-            stallTimer.current = window.setTimeout(() => {
+            const since = performance.now()
+            const checkStall = () => {
+              const now = performance.now()
+              const idle = now - lastMediaByteAt.current
+              const left = STALL_CAP_MS - (now - since)
+              if (idle < STALL_IDLE_MS && left > 0) {
+                stallTimer.current = window.setTimeout(checkStall, Math.min(STALL_IDLE_MS - idle, left))
+                return
+              }
               stallTimer.current = null
               failoverToNextAttemptRef.current('inconclusive')
-            }, 8000)
+            }
+            stallTimer.current = window.setTimeout(checkStall, STALL_IDLE_MS)
           }
         }}
+        onPause={() => {
+          setIsPlaying(false)
+          if (stallTimer.current) {
+            window.clearTimeout(stallTimer.current)
+            stallTimer.current = null
+          }
+        }}
+        onPlay={() => setIsPlaying(true)}
         onPlaying={() => {
           if (stallTimer.current) {
             window.clearTimeout(stallTimer.current)
@@ -1292,10 +1583,51 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
         onClick={() => setShowHud((v) => !v)}
       />
 
+      {/* B9: the video itself has moved into the Document PiP window; this stands in
+          for it here so the main view isn't just a black rectangle with no way back. */}
+      {pipWindow && (
+        <div className="player__pip-placeholder">
+          <p className="player__connecting-title">Playing in mini-player</p>
+          <button className="player__overlay-btn" onClick={closeDocPip}>
+            Return here
+          </button>
+        </div>
+      )}
+
+      {pipWindow &&
+        createPortal(
+          <div className="player__pip-controls">
+            <button
+              onClick={goToPrevChannel}
+              disabled={allChannels.length <= 1}
+              aria-label="Previous channel"
+            >
+              ◀
+            </button>
+            <div className="player__pip-controls-info">
+              {logoUrl(channel.logo) && (
+                <img src={logoUrl(channel.logo)!} alt="" width={24} height={24} onError={handleLogoError} />
+              )}
+              <span>{channel.name}</span>
+            </div>
+            <button onClick={togglePlayPause} aria-label={isPlaying ? 'Pause' : 'Play'}>
+              {isPlaying ? '⏸' : '▶'}
+            </button>
+            <button
+              onClick={goToNextChannel}
+              disabled={allChannels.length <= 1}
+              aria-label="Next channel"
+            >
+              ▶
+            </button>
+          </div>,
+          pipWindow.document.body
+        )}
+
       {/* Buffering Indicator */}
       {isBuffering && !hasError && (
         <div className="player__state-overlay player__state-overlay--connecting">
-          <div className="guide-loader" />
+          <FixerBotMascot accessory={occasionAccessory} />
           <div className="player__connecting-content">
             <p className="player__connecting-title">
               {isSlowConnecting ? 'Stream is slow to respond' : `Connecting to ${channel.name}…`}
@@ -1354,7 +1686,7 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
 
       {/* Toast message */}
       {toastMessage && (
-        <div className="player__toast">
+        <div className="player__toast" role="status" aria-live="polite">
           <span>⚡</span>
           <span>{toastMessage}</span>
         </div>
@@ -1439,6 +1771,7 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
         <div className="player__info">
           {logoUrl(channel.logo) && (
             <img
+              ref={playerLogoRef}
               src={logoUrl(channel.logo)!}
               alt={channel.name}
               width={LOGO_SIZE}
@@ -1667,12 +2000,49 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
               </div>
 
               <button
-                className="player__action-btn"
+                className={`player__action-btn ${pipWindow ? 'player__action-btn--disabled' : isPip ? 'player__action-btn--active' : ''}`}
+                disabled={Boolean(pipWindow)}
                 onClick={togglePiP}
-                title="Picture-in-Picture"
-                aria-label="Picture in Picture"
+                aria-pressed={isPip}
+                title={pipWindow ? 'Unavailable while the mini-player is open' : isPip ? 'Exit Picture-in-Picture' : 'Picture-in-Picture'}
+                aria-label={isPip ? 'Exit Picture-in-Picture' : 'Picture in Picture'}
               >
                 ⧉
+              </button>
+              {docPipSupported && (
+                <button
+                  className={`player__action-btn ${pipWindow ? 'player__action-btn--active' : ''}`}
+                  onClick={() => {
+                    if (pipWindow) {
+                      closeDocPip()
+                      return
+                    }
+                    // Called synchronously from the click so requestWindow() still
+                    // has this click's transient user activation.
+                    openDocPip({ width: 360, height: 220 }).then((win) => {
+                      if (!win) showToast('Could not open the mini-player — try again in a moment')
+                    }).catch((err: unknown) => {
+                      // Failure-path only: the DOMException name (NotAllowedError =
+                      // no user activation, InvalidStateError = browser refused the
+                      // window) is what a bug report needs.
+                      console.warn('[document-pip] requestWindow() rejected', err)
+                      showToast('Could not open the mini-player — try again in a moment')
+                    })
+                  }}
+                  title={pipWindow ? 'Close mini-player' : 'Open mini-player with zap controls'}
+                  aria-label={pipWindow ? 'Close mini-player' : 'Open mini-player'}
+                >
+                  🗗
+                </button>
+              )}
+              <button
+                className={`player__action-btn ${isZoomed ? 'player__action-btn--active' : ''}`}
+                onClick={toggleZoom}
+                title={isZoomed ? 'Fit to screen' : 'Zoom to fill screen'}
+                aria-label={isZoomed ? 'Fit video to screen' : 'Zoom video to fill screen'}
+                aria-pressed={isZoomed}
+              >
+                {isZoomed ? '⊟' : '⛶'}
               </button>
               <button
                 className="player__action-btn"
@@ -1687,41 +2057,22 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
         </div>
       </div>
 
-      {/* Side Channel Switcher Drawer */}
+      {/* Mini-guide (S3): logo, name, now/next per row, starting at the playing channel */}
       {showChannelList && (
         <div className="player__drawer glass">
           <div className="player__drawer-header">
-            <h3>Playlist Channels ({allChannels.length})</h3>
-            <button onClick={() => setShowChannelList(false)} aria-label="Close drawer">✕</button>
+            <h3>Guide ({guideChannels.length})</h3>
+            <button onClick={() => setShowChannelList(false)} aria-label="Close guide">✕</button>
           </div>
           <div className="player__drawer-list">
-            {allChannels.map((c) => (
-              <div
+            {guideChannels.map((c) => (
+              <MiniGuideRow
                 key={c.id}
-                className={`player__drawer-item ${c.id === channel.id ? 'player__drawer-item--active' : ''}`}
-                onClick={() => {
-                  setShowChannelList(false)
-                  targetChannelIdRef.current = c.id
-                  switchChannelCleanly(c)
-                }}
-              >
-                {logoUrl(c.logo) ? (
-                  <img
-                    src={logoUrl(c.logo)!}
-                    alt={c.name}
-                    width={LOGO_SIZE}
-                    height={LOGO_SIZE}
-                    loading="lazy"
-                    decoding="async"
-                    onError={handleLogoError}
-                    className="player__drawer-logo"
-                  />
-                ) : (
-                  <div className="player__drawer-initials">{c.name.slice(0, 2).toUpperCase()}</div>
-                )}
-                <span className="player__drawer-name">{c.name}</span>
-                {c.country && <span className="player__drawer-badge">{formatCountryDisplay(c.country)}</span>}
-              </div>
+                channel={c}
+                active={c.id === channel.id}
+                hasSchedule={epgChannelIds?.has(c.id) ?? false}
+                onPick={handleGuidePick}
+              />
             ))}
           </div>
         </div>
@@ -1729,7 +2080,7 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/' }: Props) {
 
       {/* Controls hint */}
       <p className="player__hint">
-        ← / → switch channel · Space play/pause · M mute · C subtitles · A audio · F fullscreen · Esc return
+        ← / → switch channel · G guide · Space play/pause · M mute · C subtitles · A audio · F fullscreen · Esc return
       </p>
     </div>
   )

@@ -80,10 +80,10 @@ streamloom-web/
 
 ### 2. Multi-Stream Candidate Shuffling & Failover
 - Channels often have multiple candidate stream URLs in `channel.streams`.
-- `VideoPlayer.tsx` implements a **6.5-second failover watchdog**:
+- `VideoPlayer.tsx` implements a **progress-aware failover watchdog** (7 s without media bytes; see `claude.md` for the exact rules):
   1. Plain HTTP streams on HTTPS origins immediately use the edge proxy.
-  2. If a direct HTTPS stream fails or stalls for 6.5s, it retries via edge proxy.
-  3. If edge proxy fails or stalls for 6.5s, it automatically advances to the next candidate stream.
+  2. If a direct HTTPS stream fails or stops receiving data, it retries via edge proxy.
+  3. If edge proxy fails or stops receiving data, it automatically advances to the next candidate stream.
   4. Once a candidate stream parses its manifest or buffers a fragment, it is recorded via `cacheWorkingStream(channel.id, url, useProxy, quality)` into `localStorage` (`sl_working_streams_v1`, 7-day TTL).
   5. The working candidate is placed at index 0 on subsequent visits, guaranteeing fast startup times.
   6. The system is self-healing: if an old cached stream stops working, candidate shuffling automatically finds and caches a new one.

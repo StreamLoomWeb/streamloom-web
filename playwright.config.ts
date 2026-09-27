@@ -1,5 +1,6 @@
 import { defineConfig, devices } from '@playwright/test'
 import { loadEnv } from 'vite'
+import { R2_MOCK_BASE_URL } from './e2e/support/r2Mock'
 
 /**
  * Placeholder Upstash settings for the dev server, used only when none are
@@ -16,6 +17,10 @@ const upstashEnv =
         VITE_UPSTASH_REDIS_REST_READONLY_TOKEN: 'mock-readonly-token',
       }
 
+// The R2 snapshot host is always the fixed mock host (e2e/support/r2Mock.ts
+// intercepts it), never a value from .env: the specs count and fail R2 requests
+// and must not depend on, or spend, the real bucket.
+
 /**
  * Browser tests for the TV guide.
  *
@@ -26,10 +31,12 @@ const upstashEnv =
  */
 export default defineConfig({
   testDir: './e2e',
-  fullyParallel: false,
+  // Every test gets a fresh browser context; specs that count reads mock Redis per
+  // context and R2 per worker (e2e/support/r2Mock.ts). Workers default to half
+  // the cores; `--workers=N` overrides.
+  fullyParallel: true,
   forbidOnly: true,
   retries: 0,
-  workers: 1,
   reporter: [['list']],
   timeout: 90_000,
   expect: { timeout: 20_000 },
@@ -47,6 +54,6 @@ export default defineConfig({
     url: 'http://127.0.0.1:5199',
     reuseExistingServer: true,
     timeout: 120_000,
-    env: upstashEnv,
+    env: { ...upstashEnv, VITE_CATALOGUE_R2_BASE_URL: R2_MOCK_BASE_URL },
   },
 })

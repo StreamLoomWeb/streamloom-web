@@ -98,7 +98,7 @@ function trigramsOf(value: string): string[] {
  * Builds the inverted trigram index for `channels`. Pure function so it can
  * run inside the catalogue worker and on the main thread identically.
  */
-export function buildSearchIndex(channels: EnrichedChannel[]): SearchIndex {
+export function buildSearchIndex(channels: readonly EnrichedChannel[]): SearchIndex {
   const haystacks = new Array<string>(channels.length)
   const ids = new Array<string>(channels.length)
   const idToIndex = new Map<string, number>()
@@ -232,27 +232,43 @@ export function matchesSearch(
   return searchHaystack(channel).includes(normalizedQuery)
 }
 
-// ---- Singleton index (set once per catalogue generation) ----
+// ---- One index per catalogue ----
 
-let _index: SearchIndex | null = null
-
-/**
- * Installs the active search index. Called by `useChannels` once the catalogue
- * (re)loads. A new catalogue generation resets this, so old matches never leak
- * across refreshes.
+/*
+ * Keyed by the catalogue array itself, so a match set can never be computed
+ * against another generation's index: callers memoise on the same array they
+ * pass in, and a superseded catalogue's index is collected with it.
  */
-export function setSearchIndex(index: SearchIndex | null): void {
-  _index = index
+const _indexes = new WeakMap<readonly EnrichedChannel[], SearchIndex>()
+
+/** Installs an index built elsewhere (the catalogue worker) for `catalogue`. */
+export function setSearchIndex(catalogue: readonly EnrichedChannel[], index: SearchIndex): void {
+  _indexes.set(catalogue, index)
 }
 
 /**
- * Returns the matching channel ids for `normalizedQuery`, or `null` when the
+ * The index for `catalogue`, built on first use if nothing installed one. The
+ * build is O(catalogue): pass the one unfiltered list, never a derived array,
+ * or every new array builds (and keeps) an index of its own.
+ */
+export function searchIndexFor(catalogue: readonly EnrichedChannel[]): SearchIndex {
+  let index = _indexes.get(catalogue)
+  if (!index) {
+    index = buildSearchIndex(catalogue)
+    _indexes.set(catalogue, index)
+  }
+  return index
+}
+
+/**
+ * Returns the ids in `catalogue` matching `normalizedQuery`, or `null` when the
  * query is empty (meaning "no restriction"). Always returns a `Set` (possibly
  * empty) for non-empty queries so callers can `has(id)` without null-checks.
+ * `catalogue` is the full, unfiltered channel list (`useChannels().allChannels`).
  */
-export function computeMatchSet(normalizedQuery: string): Set<string> | null {
-  if (!_index) return null
-  return intersectMatches(_index, normalizedQuery)
+export function computeMatchSet(normalizedQuery: string, catalogue: readonly EnrichedChannel[]): Set<string> | null {
+  if (!normalizedQuery) return null
+  return intersectMatches(searchIndexFor(catalogue), normalizedQuery)
 }
 
 /** Re-exported for tests / diagnostics. */

@@ -1,10 +1,26 @@
-.filter-sheet-backdrop {
-  position: fixed;
+/* <dialog> ships its own border/padding/background/centering via the UA
+   stylesheet — reset all of it, then re-lay it out as the same full-viewport,
+   bottom-anchored sheet this was before it moved off a plain backdrop div. */
+dialog.filter-sheet-backdrop {
+  margin: 0;
+  padding: 0;
+  border: none;
   inset: 0;
+  width: 100vw;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  background: transparent;
+  color: inherit;
+}
+
+dialog.filter-sheet-backdrop::backdrop {
   background: rgba(0, 0, 0, 0.75);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  z-index: 999;
+}
+
+dialog.filter-sheet-backdrop[open] {
   display: flex;
   justify-content: center;
   align-items: flex-end;

@@ -1,0 +1,13 @@
+// Test-only, for `wrangler pages dev` in e2e/workerd-smoke.spec.ts alone — never deployed.
+// Both this file AND the sibling package.json are required to stop wrangler's upward
+// directory search from finding and using the real project's wrangler.jsonc (which points
+// assets.directory at "./dist" and binds the real R2 buckets — neither exists nor is
+// wanted for this isolated smoke test); package.json alone was not enough (confirmed).
+{
+  "$schema": "../../../node_modules/wrangler/config-schema.json",
+  "name": "streamloomweb-workerd-smoke",
+  "compatibility_date": "2026-09-10",
+  "assets": {
+    "directory": "./public"
+  }
+}
