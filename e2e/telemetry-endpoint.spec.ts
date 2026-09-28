@@ -122,6 +122,37 @@ test.describe('opt-out signals', () => {
   })
 })
 
+test.describe('China-origin backstop', () => {
+  test('cf.country: CN answers 204 without reading the body or writing a point', async () => {
+    const { binding, points } = makeDataset()
+    const { bucket, reads } = makeBucket(LIVE_IDS)
+    const bodyRead = { value: false }
+    const res = await call(
+      makeRequest(JSON.stringify(VALID), { cf: { country: 'CN', regionCode: 'BJ', colo: 'HKG' }, bodyRead }),
+      { TELEMETRY: binding, CATALOGUE_BUCKET: bucket },
+    )
+    expect(res.status).toBe(204)
+    expect(await res.text()).toBe('')
+    expect(points).toEqual([])
+    expect(bodyRead.value).toBe(false)
+    expect(reads()).toBe(0)
+    expect(res.headers.get('access-control-allow-origin')).toBeNull()
+  })
+
+  test('a missing or non-CN cf.country is not dropped', async () => {
+    const { binding, points } = makeDataset()
+    const env = { TELEMETRY: binding, CATALOGUE_BUCKET: makeBucket(LIVE_IDS).bucket }
+
+    const noCf = await call(makeRequest(JSON.stringify(VALID)), env)
+    expect(noCf.status).toBe(202)
+
+    const other = await call(makeRequest(JSON.stringify(VALID), { cf: CF }), env)
+    expect(other.status).toBe(202)
+
+    expect(points.length).toBeGreaterThan(0)
+  })
+})
+
 test.describe('an accepted batch', () => {
   test('writes exactly waePoint() per accepted event with the edge-derived geography', async () => {
     const { binding, points } = makeDataset()
