@@ -192,22 +192,32 @@ export function Home() {
     const bump = (m: Map<string, number>, k: string) => m.set(k, (m.get(k) ?? 0) + 1)
 
     for (const ch of playableChannels) {
-      // Exclude the facet we are counting for; search stays active.
+      // Search and favourites-only apply to every facet's counts.
       if (showFavOnly && !favouriteIds.has(ch.id)) continue
       if (matchSet && !matchSet.has(ch.id)) continue
-      if (selectedCountry && ch.country !== selectedCountry) continue
-      if (selectedCategory && !ch.categoryIds.includes(selectedCategory)) continue
-      if (selectedLanguage && !(ch.languages ?? []).includes(selectedLanguage)) continue
-      if (selectedQuality !== 'All Quality' && !matchQuality(ch.stream?.quality, selectedQuality)) continue
 
-      if (ch.country) bump(countries, ch.country)
-      for (const id of ch.categoryIds) bump(categories, id)
-      for (const code of ch.languages ?? []) bump(languages, code)
-      const q = ch.stream?.quality
-      if (q && matchQuality(q, '4K')) present['4K'] = true
-      if (q && matchQuality(q, 'FHD (1080p)')) present['FHD (1080p)'] = true
-      if (q && matchQuality(q, 'HD (720p)')) present['HD (720p)'] = true
-      if (q && matchQuality(q, 'SD')) present.SD = true
+      // Each facet's own selection is excluded from its own count so the
+      // dropdown keeps offering every alternative once a value is picked;
+      // the other facets' selections still narrow it.
+      const countryOk = !selectedCountry || ch.country === selectedCountry
+      const categoryOk = !selectedCategory || ch.categoryIds.includes(selectedCategory)
+      const languageOk = !selectedLanguage || (ch.languages ?? []).includes(selectedLanguage)
+      const qualityOk = selectedQuality === 'All Quality' || matchQuality(ch.stream?.quality, selectedQuality)
+
+      if (categoryOk && languageOk && qualityOk && ch.country) bump(countries, ch.country)
+      if (countryOk && languageOk && qualityOk) {
+        for (const id of ch.categoryIds) bump(categories, id)
+      }
+      if (countryOk && categoryOk && qualityOk) {
+        for (const code of ch.languages ?? []) bump(languages, code)
+      }
+      if (countryOk && categoryOk && languageOk) {
+        const q = ch.stream?.quality
+        if (q && matchQuality(q, '4K')) present['4K'] = true
+        if (q && matchQuality(q, 'FHD (1080p)')) present['FHD (1080p)'] = true
+        if (q && matchQuality(q, 'HD (720p)')) present['HD (720p)'] = true
+        if (q && matchQuality(q, 'SD')) present.SD = true
+      }
     }
     return { countries, categories, languages, present }
   }, [playableChannels, matchSet, favouriteIds, showFavOnly, selectedCountry, selectedCategory, selectedLanguage, selectedQuality])
