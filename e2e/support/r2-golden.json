@@ -21,7 +21,7 @@
     "contentType": "application/json",
     "contentEncoding": "br",
     "cacheControl": "public, max-age=31536000, immutable",
-    "body": "[{\"id\":\"p1\",\"channel_id\":\"AlphaNews.in\",\"title\":\"Morning News\",\"description\":\"Headlines\",\"start_time\":\"2026-09-20T06:00:00Z\",\"end_time\":\"2026-09-20T07:00:00Z\"},{\"id\":\"p2\",\"channel_id\":\"AlphaNews.in\",\"title\":\"Bulletin\",\"description\":null,\"start_time\":\"2026-09-20T07:00:00Z\",\"end_time\":\"2026-09-20T07:30:00Z\"}]"
+    "body": "[{\"id\":\"p0\",\"channel_id\":\"AlphaNews.in\",\"title\":\"Already over\",\"description\":null,\"start_time\":\"2025-09-04T13:00:00Z\",\"end_time\":\"2025-09-04T14:00:00Z\"},{\"id\":\"p1\",\"channel_id\":\"AlphaNews.in\",\"title\":\"Morning News\",\"description\":\"Headlines\",\"start_time\":\"2026-09-20T06:00:00Z\",\"end_time\":\"2026-09-20T07:00:00Z\"},{\"id\":\"p2\",\"channel_id\":\"AlphaNews.in\",\"title\":\"Bulletin\",\"description\":null,\"start_time\":\"2026-09-20T07:00:00Z\",\"end_time\":\"2026-09-20T07:30:00Z\"}]"
   },
   "catalogue/g1757000000000/epg/GammaWorld.uk.json.br": {
     "contentType": "application/json",
@@ -41,6 +41,12 @@
     "cacheControl": "public, max-age=31536000, immutable",
     "body": "[[\"AlphaNews.in\",[[548067,60,\"Morning News\"],[548127,30,\"Bulletin\"]]],[\"GammaWorld.uk\",[[548097,60,\"World Report\"]]]]"
   },
+  "catalogue/g1757000000000/picks.json.br": {
+    "contentType": "application/json",
+    "contentEncoding": "br",
+    "cacheControl": "public, max-age=31536000, immutable",
+    "body": "[[\"GammaWorld.uk\",[{\"channel_id\":\"GammaWorld.uk\",\"url\":\"https://example.test/gamma.m3u8\",\"quality\":\"1080p\",\"timeshift\":null,\"status\":\"active\",\"user_agent\":null,\"referrer\":null}]],[\"AlphaNews.in\",[{\"channel_id\":\"AlphaNews.in\",\"url\":\"https://example.test/alpha.m3u8\",\"quality\":\"720p\",\"timeshift\":null,\"status\":\"active\",\"user_agent\":\"Mozilla/5.0\",\"referrer\":null}]]]"
+  },
   "catalogue/g1757000000000/streams.json.br": {
     "contentType": "application/json",
     "contentEncoding": "br",
@@ -51,6 +57,6 @@
     "contentType": "application/json",
     "contentEncoding": null,
     "cacheControl": "public, max-age=60, stale-while-revalidate=3600",
-    "body": "{\"generation\":1757000000000,\"version\":2,\"layout\":1,\"syncedAt\":\"2025-09-04T15:33:20.000Z\",\"hash\":\"050a5a2b3c81b369aa6de0c003a6b754b3dd9cd3e1af4af97531c5d0ff379ffd\",\"guide\":true,\"counts\":{\"channels\":3,\"streams\":3,\"categories\":2,\"countries\":2,\"epgChannels\":2}}"
+    "body": "{\"generation\":1757000000000,\"version\":2,\"layout\":1,\"syncedAt\":\"2025-09-04T15:33:20.000Z\",\"hash\":\"c8e1c9f82f64db4bb8149ea5fea12b423d0375f112345d5b4abc379287143e8a\",\"guide\":true,\"guideWindow\":{\"from\":\"2025-09-04T15:33:20.000Z\",\"to\":\"2025-09-06T15:33:20.000Z\"},\"pickStreams\":{\"channels\":2,\"probed\":false},\"counts\":{\"channels\":3,\"streams\":3,\"categories\":2,\"countries\":2,\"epgChannels\":2}}"
   }
 }
