@@ -311,6 +311,61 @@ or session id, a hash of any of those, the text of a search, or a client clock.
 Settings → *Privacy & Usage Statistics* holds the in-app opt-out and the plain
 description of what is and is not collected.
 
+### The China-origin backstop at `POST /api/t`
+
+A cross-repo, owner-approved legal-risk review (AI-assisted research across
+EEA/UK/CH, the Americas, APAC and rest-of-world; **not legal advice**, and each
+memo it produced says so and flags itself as needing qualified-counsel review)
+concluded that China needs a different rule from the flat "two events are
+always sent regardless of opt-out" design this section describes above: PIPL's
+cross-border transfer rules are understood to trigger on a China-origin
+request reaching a non-China server **at all**, before payload content,
+anonymity or opt-out state become relevant. The chosen design is that **no
+telemetry event of any kind leaves a China-origin device**, decided
+client-side before any request is sent.
+
+streamloom-android implements that client-side decision entirely on-device
+(`docs/adr/0035-telemetry-essential-events-are-region-tiered-not-global.md`
+in that repo). streamloom-backend records the same design in
+`docs/adr/0049-telemetry-opt-out-is-region-tiered-not-flat.md` (PR #56), but
+scopes itself out of the ingest-side mechanism: that belongs here, since this
+repo owns `POST /api/t`.
+
+`functions/api/t.ts` now carries the defense-in-depth half of that design: any
+request whose `request.cf.country` resolves to `CN` is answered with an empty
+`204` before its method, headers or body are read any further, and **nothing
+about it is logged** — logging the IP or country of a dropped China request
+would itself be the exact cross-border processing this backstop exists to
+avoid. This is a backstop, not the primary control: the Android client (and,
+if the open question below is resolved in favor of it, this repo's own web
+client) already decide not to send from a China-origin device before the
+request is ever made. The edge check exists for every caller that isn't one of
+those two clients — a browser hitting the API directly, a future client, or an
+older build that predates this change. See
+`e2e/telemetry-endpoint.spec.ts`'s "China-origin backstop" block for the
+coverage.
+
+This repo has no `docs/adr/` directory of its own (checked before writing
+this), so the backstop and this open question are recorded here in README.md,
+next to the rest of this project's telemetry documentation, rather than in a
+new ADR format invented for this one change.
+
+**Open question, not resolved by this backstop:** whether this repo's own web
+telemetry client (`src/telemetry/`) should adopt the same region-tiered
+opt-out that Android now has — making the two "essential" events
+toggle-controlled (not always-on) for EEA/UK/Switzerland and the other
+confirmed European countries, on top of never sending from a China-origin
+device. Android and web could reasonably end up different here (different
+regulatory posture for a browser vs. an app store listing, for one), or they
+could end up the same — that call belongs to the project owner and has not
+been made. Tracked in
+[StreamLoomWeb/streamloom-web#29](https://github.com/StreamLoomWeb/streamloom-web/issues/29).
+Until it is resolved, `src/telemetry/`'s opt-out logic is unchanged by this
+work: the two events it currently treats as always-on stay always-on outside
+China, exactly as before. **No legal or privacy sign-off has been obtained for
+the region-tiered design as a whole** — that is an open item in both the
+Android and backend records, and it is still open here too.
+
 ### What the owner has to configure (once)
 
 1. **Analytics Engine binding.** Workers & Pages → `streamloomweb` → Settings →

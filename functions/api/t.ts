@@ -17,6 +17,16 @@
  *   4. **The point shape is `waePoint()`'s**, in `WAE_LAYOUT`'s order, built once in the contract.
  *   5. **No CORS headers.** A cross-origin page cannot read a response and its preflight is
  *      refused (405 on OPTIONS); `Sec-Fetch-Site: cross-site` is refused outright.
+ *   6. **A China-resolved origin is dropped, silently, before the body is touched.** PIPL's
+ *      cross-border transfer rules are understood to trigger on a China-origin request reaching
+ *      this non-China edge at all, before payload content or opt-out state become relevant (see
+ *      README.md's "Telemetry and the region-tiered opt-out" section, and the cross-repo design
+ *      records it cites: streamloom-android's `docs/adr/0035-*.md` and streamloom-backend's
+ *      `docs/adr/0049-*.md`). The Android client, and this repo's own web client once/if it
+ *      adopts the same tiering, already decide this before the request is ever sent — this is
+ *      the defense-in-depth backstop for any other caller (a browser hitting the API directly, a
+ *      future client, an older build). Nothing about a dropped request is logged: writing its
+ *      country or IP to a log would itself be the cross-border processing this exists to avoid.
  *
  * No credential lives here: the only capabilities are the `TELEMETRY` (Analytics Engine) and
  * `CATALOGUE_BUCKET` (R2, read) bindings. The Workers Free rate-limit rule on this path is edge
@@ -173,6 +183,14 @@ export async function handleTelemetry(context: TelemetryContext, now: number = D
     return empty(204)
   }
 
+  // China-origin backstop, next: also before the method or body are looked at. Cloudflare's
+  // edge-derived `cf.country` is read once here and reused below for the accepted path; nothing
+  // else about the request (its IP, headers, or the fact that it was dropped) is ever logged.
+  const cf = (request as Request & { cf?: { country?: unknown; regionCode?: unknown } }).cf
+  if (cf?.country === 'CN') {
+    return empty(204)
+  }
+
   const method = request.method.toUpperCase()
   if (method !== 'POST') return empty(405, { Allow: 'POST' })
 
@@ -199,8 +217,8 @@ export async function handleTelemetry(context: TelemetryContext, now: number = D
   const verdict = validateBatch(text, { activeChannelIds: ids })
   if (!verdict.ok) return refused(verdict.reason)
 
-  // Country and region are what the edge derived. Read, then the request is not consulted again.
-  const cf = (request as Request & { cf?: { country?: unknown; regionCode?: unknown } }).cf
+  // Country and region are what the edge derived, already read above; the request is not
+  // consulted again.
   const country = typeof cf?.country === 'string' ? cf.country : null
   const region = typeof cf?.regionCode === 'string' ? cf.regionCode : null
 
