@@ -11,11 +11,7 @@ import {
   buildGuideWindow,
   hourMarks,
 } from '../util/epgTime'
-import {
-  isTranslationEnabled,
-  setTranslationEnabled,
-  useTranslationVersion,
-} from '../util/translate'
+import { useTranslateEnabled } from '../util/translate'
 import { applyFilters } from '../util/epgFilter'
 import { prefetchPlaylist } from '../util/playlistPrefetch'
 import type { GuideFilters } from '../util/epgFilter'
@@ -294,9 +290,9 @@ export function EpgGuide({
   const { sidebar: sidebarWidth, rowHeight } = useGuideMetrics()
   const [scrollTop, setScrollTop] = useState(0)
   const [viewportH, setViewportH] = useState(640)
-  const [translate, setTranslateState] = useState(isTranslationEnabled)
-  // Version counter drives re-render when the translation store changes.
-  useTranslationVersion()
+  // Global preference (Navbar toggle); this hook re-renders the guide when it
+  // flips or when a batch of translations lands.
+  const translate = useTranslateEnabled()
   // Bumped when a wave of schedules lands, which is what makes the virtualized
   // rows pick up their programs from the cache below.
   const [cacheTick, setCacheTick] = useState(0)
@@ -308,9 +304,6 @@ export function EpgGuide({
     const timer = setInterval(() => setNow(new Date()), NOW_REFRESH_MS)
     return () => clearInterval(timer)
   }, [])
-
-  // Translation state lives outside React; the version hook above re-renders on
-  // change, so the local flag only needs to mirror the toggle.
 
   // A schedule arriving must repaint the rows that now have data. The callback
   // is coalesced by `prefetchEpg`, so a whole wave costs one render.
@@ -551,11 +544,6 @@ export function EpgGuide({
         categories={categories}
         epgChannelIds={epgChannelIds}
         resultCount={guideChannels.length}
-        translate={translate}
-        onToggleTranslate={() => {
-          setTranslationEnabled(!translate)
-          setTranslateState(!translate)
-        }}
         onScrollToNow={scrollToNow}
       />
 

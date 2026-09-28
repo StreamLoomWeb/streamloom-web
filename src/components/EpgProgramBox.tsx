@@ -1,4 +1,4 @@
-import { memo, useEffect } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import type { EpgProgram } from '../api/types'
 import { PIXELS_PER_MINUTE, formatTime, offsetMinutes } from '../util/epgTime'
 import {
@@ -36,6 +36,14 @@ interface Props {
  * cache — subscribing to its version rather than mirroring it into state — so a
  * batch of translations lands in a single pass with no second render. The
  * original title is always kept as the tooltip.
+ *
+ * The description used to live only in that tooltip, reachable by mouse hover
+ * alone — unusable by touch, keyboard or TV remote. A programme with one gets
+ * a dedicated details button; activating it (click, tap, or Enter/Space while
+ * it has focus) opens a native <dialog> with the full text, matching the
+ * modal pattern FilterSheet already uses so it escapes the grid's own
+ * scroll/clipping instead of trying to expand in place within a fixed-height
+ * absolutely-positioned row.
  */
 export const EpgProgramBox = memo(function EpgProgramBox({
   program,
@@ -52,6 +60,16 @@ export const EpgProgramBox = memo(function EpgProgramBox({
     if (translate) requestTranslations([program.title])
   }, [translate, program.title])
 
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const dialogRef = useRef<HTMLDialogElement>(null)
+
+  useEffect(() => {
+    const dialog = dialogRef.current
+    if (!dialog) return
+    if (detailsOpen && !dialog.open) dialog.showModal()
+    else if (!detailsOpen && dialog.open) dialog.close()
+  }, [detailsOpen])
+
   const start = offsetMinutes(program.start_time, origin)
   const end = offsetMinutes(program.end_time, origin)
   // Snap to the pixel grid: `slotEnd` comes from the next programme's snapped
@@ -67,25 +85,74 @@ export const EpgProgramBox = memo(function EpgProgramBox({
   const translated = translate ? getTranslation(program.title) : null
   const title = translated ?? program.title
   const time = formatTime(program.start_time)
+  const description = program.description?.trim()
 
   return (
-    <div
-      className={`epg-guide__program${isNow ? ' epg-guide__program--now' : ''}`}
-      style={{ transform: `translateX(${left}px)`, width }}
-      title={`${time} – ${program.title}${program.description ? '\n' + program.description : ''}`}
-      onClick={() => onPick(program.channel_id)}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          onPick(program.channel_id)
-        }
-      }}
-    >
-      <span className="epg-guide__prog-title">{title}</span>
-      {width > 90 && <span className="epg-guide__prog-time">{time}</span>}
-    </div>
+    <>
+      <div
+        className={`epg-guide__program${isNow ? ' epg-guide__program--now' : ''}`}
+        style={{ transform: `translateX(${left}px)`, width }}
+        title={`${time} – ${program.title}${description ? '\n' + description : ''}`}
+        onClick={() => onPick(program.channel_id)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onPick(program.channel_id)
+          }
+        }}
+      >
+        <span className="epg-guide__prog-title">{title}</span>
+        {width > 90 && <span className="epg-guide__prog-time">{time}</span>}
+        {description && (
+          <button
+            type="button"
+            className="epg-guide__prog-info"
+            tabIndex={0}
+            aria-label={`Show details for ${title}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              setDetailsOpen(true)
+            }}
+            onKeyDown={(e) => {
+              // Keydown bubbles to the box's own handler before the browser's
+              // click-on-Enter/Space fires, which would also tune the channel.
+              if (e.key === 'Enter' || e.key === ' ') e.stopPropagation()
+            }}
+          >
+            <span aria-hidden="true">ⓘ</span>
+          </button>
+        )}
+      </div>
+
+      {description && (
+        <dialog
+          ref={dialogRef}
+          className="epg-guide__prog-dialog-backdrop"
+          onClose={() => setDetailsOpen(false)}
+          onClick={(e) => {
+            if (e.target === dialogRef.current) setDetailsOpen(false)
+          }}
+        >
+          <div className="epg-guide__prog-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="epg-guide__prog-dialog-header">
+              <span className="epg-guide__prog-dialog-time">{time}</span>
+              <button
+                type="button"
+                className="epg-guide__prog-dialog-close"
+                onClick={() => setDetailsOpen(false)}
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            <h3 className="epg-guide__prog-dialog-title">{title}</h3>
+            <p className="epg-guide__prog-dialog-desc">{description}</p>
+          </div>
+        </dialog>
+      )}
+    </>
   )
 })
 

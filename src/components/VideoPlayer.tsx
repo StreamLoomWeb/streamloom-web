@@ -36,6 +36,7 @@ import { HandoffLoader } from '../util/handoffLoader'
 import { MANIFEST_TIMEOUT_MS } from '../util/playlistPrefetch'
 import { MiniGuideRow } from './MiniGuideRow'
 import { useDocumentPip } from '../hooks/useDocumentPip'
+import { getTranslation, requestTranslations, useTranslateEnabled } from '../util/translate'
 import './VideoPlayer.css'
 
 interface Props {
@@ -1492,6 +1493,19 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
   const nextProgram = useMemo(() => getNextProgram(programs, currentTimestamp), [programs, currentTimestamp])
   const fav = isFavourite(channel.id)
 
+  const translateEpg = useTranslateEnabled()
+  useEffect(() => {
+    if (!translateEpg) return
+    const titles = [nowPlaying?.title, nextProgram?.title].filter((t): t is string => !!t)
+    if (titles.length > 0) requestTranslations(titles)
+  }, [translateEpg, nowPlaying, nextProgram])
+  const nowPlayingTitle = nowPlaying
+    ? (translateEpg && getTranslation(nowPlaying.title)) || nowPlaying.title
+    : null
+  const nextProgramTitle = nextProgram
+    ? (translateEpg && getTranslation(nextProgram.title)) || nextProgram.title
+    : null
+
   // Mini-guide row order (S3): the playing channel first, then the rest of the
   // playlist in their existing order, wrapping around.
   const guideChannels = useMemo(() => {
@@ -1810,11 +1824,11 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
             {nowPlaying && (
               <p className="player__now">
                 <span className="live-dot" style={{ marginRight: 6 }} />
-                {nowPlaying.title}
+                {nowPlayingTitle}
               </p>
             )}
             {nextProgram && (
-              <p className="player__next">Next: {nextProgram.title}</p>
+              <p className="player__next">Next: {nextProgramTitle}</p>
             )}
           </div>
         </div>

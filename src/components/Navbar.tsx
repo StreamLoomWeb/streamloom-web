@@ -1,12 +1,14 @@
 import { NavLink } from 'react-router-dom'
 import { useChannels, useFavourites } from '../hooks/useChannels'
 import { useTheme } from '../hooks/useTheme'
+import { setTranslationEnabled, useTranslateEnabled } from '../util/translate'
 import './Navbar.css'
 
 export function Navbar() {
   const { loading, refresh } = useChannels()
   const { favouriteIds } = useFavourites()
   const { isDark, toggleTheme } = useTheme()
+  const translate = useTranslateEnabled()
   const favCount = favouriteIds.size
 
   return (
@@ -34,6 +36,15 @@ export function Navbar() {
 
         <div className="navbar__actions">
           {loading && <span className="navbar__spinner" title="Loading catalogue…" />}
+          <button
+            className={`navbar__icon-btn navbar__icon-btn--translate ${translate ? 'navbar__icon-btn--active' : ''}`}
+            onClick={() => setTranslationEnabled(!translate)}
+            aria-pressed={translate}
+            title={translate ? 'Showing English titles — click to show original' : 'Translate programme titles to English'}
+            aria-label={translate ? 'Showing English titles' : 'Translate programme titles to English'}
+          >
+            🌐
+          </button>
           <button
             className="navbar__icon-btn navbar__icon-btn--theme"
             onClick={toggleTheme}

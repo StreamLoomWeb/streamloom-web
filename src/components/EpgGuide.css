@@ -367,6 +367,131 @@
   white-space: nowrap;
 }
 
+/* Details button: only rendered when the programme has a description, so its
+   info is reachable by tap/click/keyboard instead of only a mouse-hover
+   tooltip. Sits in the box's own corner rather than stealing the box's click,
+   which still tunes the channel. */
+.epg-guide__prog-info {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-muted);
+  background: rgba(0, 0, 0, 0.35);
+  border: none;
+  flex-shrink: 0;
+}
+
+.epg-guide__prog-info:hover,
+.epg-guide__prog-info:focus-visible {
+  color: var(--text-primary);
+  background: var(--accent);
+}
+
+.epg-guide__prog-info:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Details dialog: a centered modal (not the bottom sheet FilterSheet uses) so
+   it reads like a small info card rather than a full settings surface. The
+   native <dialog>'s top layer means it always escapes the guide grid's own
+   scroll/clip context, so it never needs positioning relative to the box that
+   opened it. */
+dialog.epg-guide__prog-dialog-backdrop {
+  margin: 0;
+  padding: 16px;
+  border: none;
+  inset: 0;
+  width: 100vw;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  background: transparent;
+  color: inherit;
+}
+
+dialog.epg-guide__prog-dialog-backdrop::backdrop {
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+dialog.epg-guide__prog-dialog-backdrop[open] {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.epg-guide__prog-dialog {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 420px;
+  max-height: 80dvh;
+  overflow-y: auto;
+  padding: 16px 18px 20px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.8);
+}
+
+.epg-guide__prog-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.epg-guide__prog-dialog-time {
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.epg-guide__prog-dialog-close {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.epg-guide__prog-dialog-close:hover,
+.epg-guide__prog-dialog-close:focus-visible {
+  color: var(--text-primary);
+  background: var(--bg-card-hover);
+}
+
+.epg-guide__prog-dialog-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 8px;
+}
+
+.epg-guide__prog-dialog-desc {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  white-space: pre-line;
+  margin: 0;
+}
+
 .epg-guide__no-prog {
   position: absolute;
   left: 0;

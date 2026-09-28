@@ -11,6 +11,7 @@ import { LOGO_SIZE, logoUrl, handleLogoError } from '../util/logo'
 import { preconnectChannel } from '../util/preconnect'
 import { prefetchPlaylist } from '../util/playlistPrefetch'
 import { navigateWithLogoTransition } from '../util/viewTransition'
+import { getTranslation, requestTranslations, useTranslateEnabled } from '../util/translate'
 import './ChannelCard.css'
 
 interface Props {
@@ -30,6 +31,14 @@ export function ChannelCard({ channel, epgChannelIds, size = 'medium', onWatch, 
   const hasSchedule = epgChannelIds?.has(channel.id) ?? false
   const { program: nowPlaying, now } = useNowPlaying(hasSchedule && visible ? channel.id : null)
   const progress = nowPlaying ? programProgress(nowPlaying, now) : null
+
+  const translate = useTranslateEnabled()
+  useEffect(() => {
+    if (translate && nowPlaying) requestTranslations([nowPlaying.title])
+  }, [translate, nowPlaying])
+  const nowPlayingTitle = nowPlaying
+    ? (translate && getTranslation(nowPlaying.title)) || nowPlaying.title
+    : null
 
   const hasStream = !!channel.stream
   const fav = isFavourite(channel.id)
@@ -138,9 +147,9 @@ export function ChannelCard({ channel, epgChannelIds, size = 'medium', onWatch, 
           <p className="channel-card__name" title={channel.name}>{channel.name}</p>
           {nowPlaying ? (
             <>
-              <p className="channel-card__epg" title={nowPlaying.title}>
+              <p className="channel-card__epg" title={nowPlayingTitle ?? undefined}>
                 <span className="live-dot" style={{ marginRight: 6 }} />
-                <span className="channel-card__epg-text">{nowPlaying.title}</span>
+                <span className="channel-card__epg-text">{nowPlayingTitle}</span>
               </p>
               {progress !== null && (
                 <div className="channel-card__progress" aria-hidden="true">

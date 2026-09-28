@@ -1,10 +1,11 @@
-import { memo, useState } from 'react'
+import { memo, useEffect, useState } from 'react'
 import type { EnrichedChannel } from '../hooks/useChannels'
 import { useEpg } from '../hooks/useChannels'
 import { useVisible } from '../hooks/useVisible'
 import { getCurrentProgram, getNextProgram } from '../util/epgNow'
 import { formatCountryDisplay } from '../util/country'
 import { LOGO_SIZE, logoUrl, handleLogoError } from '../util/logo'
+import { getTranslation, requestTranslations, useTranslateEnabled } from '../util/translate'
 
 interface Props {
   channel: EnrichedChannel
@@ -29,6 +30,15 @@ export const MiniGuideRow = memo(function MiniGuideRow({ channel, active, hasSch
   const nowPlaying = getCurrentProgram(programs, now)
   const nextProgram = nowPlaying ? getNextProgram(programs, now) : undefined
   const logoSrc = logoUrl(channel.logo)
+
+  const translate = useTranslateEnabled()
+  useEffect(() => {
+    if (!translate) return
+    const titles = [nowPlaying?.title, nextProgram?.title].filter((t): t is string => !!t)
+    if (titles.length > 0) requestTranslations(titles)
+  }, [translate, nowPlaying, nextProgram])
+  const nowTitle = nowPlaying ? (translate && getTranslation(nowPlaying.title)) || nowPlaying.title : null
+  const nextTitle = nextProgram ? (translate && getTranslation(nextProgram.title)) || nextProgram.title : null
 
   return (
     <button
@@ -56,8 +66,8 @@ export const MiniGuideRow = memo(function MiniGuideRow({ channel, active, hasSch
         {nowPlaying ? (
           <span className="player__drawer-epg">
             <span className="live-dot" />
-            <span className="player__drawer-epg-text">{nowPlaying.title}</span>
-            {nextProgram && <span className="player__drawer-next">Next: {nextProgram.title}</span>}
+            <span className="player__drawer-epg-text">{nowTitle}</span>
+            {nextProgram && <span className="player__drawer-next">Next: {nextTitle}</span>}
           </span>
         ) : channel.country ? (
           <span className="player__drawer-badge">{formatCountryDisplay(channel.country)}</span>

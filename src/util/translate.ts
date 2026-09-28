@@ -100,9 +100,20 @@ export function getTranslationVersion(): number {
   return _version
 }
 
-/** True when the guide is showing translated titles. */
+/** True when translated titles are being shown. */
 export function isTranslationEnabled(): boolean {
   return _enabled
+}
+
+/**
+ * Reactive read of the global "Translate to English" preference, for any
+ * surface that renders an EPG-sourced title (channel tiles, the hero, the
+ * guide, the player). Re-renders the caller when the toggle flips or a title
+ * it's waiting on lands, so every surface stays in sync off one flag.
+ */
+export function useTranslateEnabled(): boolean {
+  useTranslationVersion()
+  return isTranslationEnabled()
 }
 
 /** Turns translation on or off and persists the choice. */

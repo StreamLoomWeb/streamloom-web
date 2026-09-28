@@ -22,8 +22,6 @@ interface Props {
   categories: Category[]
   epgChannelIds: Set<string>
   resultCount: number
-  translate: boolean
-  onToggleTranslate: () => void
   onScrollToNow: () => void
 }
 
@@ -55,8 +53,6 @@ export function EpgToolbar({
   categories,
   epgChannelIds,
   resultCount,
-  translate,
-  onToggleTranslate,
   onScrollToNow,
 }: Props) {
   const { allChannels } = useChannels()
@@ -172,17 +168,6 @@ export function EpgToolbar({
           >
             <span>🎛️ Filters</span>
             {count > 0 && <span className="home-filter-btn__badge">{count}</span>}
-          </button>
-
-          <button
-            type="button"
-            className={`epg-toolbar__btn${translate ? ' epg-toolbar__btn--active' : ''}`}
-            onClick={onToggleTranslate}
-            aria-pressed={translate}
-            title="Translate programme titles to English"
-          >
-            <span aria-hidden="true">🌐</span>
-            {translate ? 'English' : 'Original'}
           </button>
 
           <button type="button" className="epg-toolbar__btn" onClick={onScrollToNow}>

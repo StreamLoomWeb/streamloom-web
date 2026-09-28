@@ -90,6 +90,12 @@
 }
 .navbar__icon-btn:hover { color: var(--text-primary); background: var(--bg-card-hover); }
 
+.navbar__icon-btn--active {
+  color: var(--accent);
+  background: var(--accent-glow);
+  border-color: var(--accent);
+}
+
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .navbar__spinner {
