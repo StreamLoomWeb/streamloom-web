@@ -39,12 +39,29 @@ The browser reads the catalogue from R2 first (ADR-0030, ADR-0034 in
 streamloom-backend) and falls through to Redis on any miss, malformed object or
 timeout. The base URL is the build-time setting `VITE_CATALOGUE_R2_BASE_URL`.
 
-- catalogue/meta.json                      -> { generation, version: 2, layout: 1, syncedAt, hash, guide, counts }
+- catalogue/meta.json                      -> { generation, version: 2, layout: 1, syncedAt, hash, guide, guideWindow?, pickStreams, counts }
 - catalogue/g<N>/channels.json.br          -> Channel[]
 - catalogue/g<N>/streams.json.br           -> Stream[]
 - catalogue/g<N>/categories.json.br        -> Category[]
 - catalogue/g<N>/epg/ids.json.br           -> string[]      (channel ids with schedules)
 - catalogue/g<N>/epg/<channelId>.json.br   -> EpgProgram[]  (per-channel schedule, on demand)
+- catalogue/g<N>/epg/summary.json.br      -> [channelId, [startOffsetMin, durationMin, title][]][]  (guide window, ADR-0046/0051)
+- catalogue/g<N>/picks.json.br             -> [channelId, Stream[]][]  (published pins, R2 only)
+
+[ADR-0051](https://github.com/StreamLoomBackEnd/streamloom-backend/blob/main/docs/adr/0051-the-guide-window-is-the-summary-and-pick-streams-are-the-generations-own.md) ([streamloom-backend#58](https://github.com/StreamLoomBackEnd/streamloom-backend/pull/58))
+made three additive changes without bumping `version` or `layout`:
+
+- `epg/summary.json.br` is forward-only: it no longer carries programmes that
+  ended before the generation, and covers the generation to +48h.
+- `picks.json.br` lists the generation's published pins in `picks.json` order;
+  each row is byte-identical to its row in `streams.json.br`. It exists in R2
+  only, not in Redis.
+- `meta.json` gains `guideWindow: { from, to }` (present only when `guide` is
+  true) and `pickStreams: { channels, probed: false }` (always present).
+
+This client does not read `summary.json.br`'s window, `picks.json.br`,
+`guideWindow` or `pickStreams` yet; `parseMeta` ignores unknown fields, and the
+golden fixture is kept in step with the backend's.
 
 Every generation object is served `Content-Encoding: br`, so the browser decodes
 it itself. A client fetches `meta.json`, compares `generation` with the stored
