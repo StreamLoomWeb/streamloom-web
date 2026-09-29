@@ -1,3 +1,4 @@
+import { windowPlaylist } from '../util/playlistWindow'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useMemo } from 'react'
 import { useChannels } from '../hooks/useChannels'
@@ -18,10 +19,11 @@ export function Watch() {
   const playlistIds = useMemo(() => {
     const fromState = (location.state as { playlist?: string[] } | null)?.playlist
     if (fromState && Array.isArray(fromState) && fromState.length > 1) {
+      const bounded = windowPlaylist(fromState, channelIdParam)
       try {
-        sessionStorage.setItem('sl_active_playlist', JSON.stringify(fromState))
+        sessionStorage.setItem('sl_active_playlist', JSON.stringify(bounded))
       } catch {}
-      return fromState
+      return bounded
     }
     try {
       const stored = sessionStorage.getItem('sl_active_playlist')
@@ -33,7 +35,7 @@ export function Watch() {
       }
     } catch {}
     return null
-  }, [location.state])
+  }, [location.state, channelIdParam])
 
   const returnTo = useMemo(() => {
     const fromState = (location.state as { returnTo?: string } | null)?.returnTo

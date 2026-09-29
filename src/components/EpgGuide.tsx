@@ -14,6 +14,7 @@ import {
 import { useTranslateEnabled } from '../util/translate'
 import { applyFilters } from '../util/epgFilter'
 import { prefetchPlaylist } from '../util/playlistPrefetch'
+import { windowPlaylist } from '../util/playlistWindow'
 import type { GuideFilters } from '../util/epgFilter'
 import { EpgToolbar } from './EpgToolbar'
 import { EpgTimeline } from './EpgTimeline'
@@ -513,7 +514,7 @@ export function EpgGuide({
       if (picked) prefetchPlaylist(picked)
       sessionStorage.setItem('sl_last_viewed', channelId)
       navigate(`/watch/${encodeURIComponent(channelId)}`, {
-        state: { playlist: playlistRef.current, returnTo: '/guide' },
+        state: { playlist: windowPlaylist(playlistRef.current, channelId), returnTo: '/guide' },
       })
     },
     [navigate],
