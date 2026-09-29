@@ -10,10 +10,15 @@
  */
 
 import { fetchUpstream as fetchUpstreamHop } from './_lib/rawHttp'
+import { repackSegment } from './_lib/tsTrim'
 import { PEEK_BYTES, concatBytes, isPlaylistBytes, looksLikeHtml, peekBody, sniffKind } from './_lib/sniff'
 
 /** A VLC-like identity: many IPTV origins allow it and refuse browser UAs. */
 const VLC_UA = 'VLC/3.0.20 LibVLC/3.0.20'
+/** Largest TS segment the repacker will buffer. */
+const MAX_REPACK_BYTES = 4 * 1024 * 1024
+/** How long a fetched segment is kept so the next request for it does not go upstream again. */
+const SEGMENT_CACHE_SECONDS = 40
 const isVlcUa = (ua: string) => /^VLC\//i.test(ua)
 /** A playlist larger than this is not a playlist worth rewriting in memory. */
 const MAX_PLAYLIST_BYTES = 4 * 1024 * 1024
@@ -67,6 +72,88 @@ function updateEdgeCacheWorkingStream(channelId: string, workingUrl: string, col
     context.waitUntil(updateJob())
   } else {
     updateJob().catch(() => {})
+  }
+}
+
+const segmentCacheKey = (url: string) => `https://streamloom.internal/seg/${encodeURIComponent(url)}`
+
+async function cachedSegment(url: string): Promise<Uint8Array | null> {
+  try {
+    // @ts-ignore
+    if (typeof caches === 'undefined' || !caches.default) return null
+    // @ts-ignore
+    const hit = await caches.default.match(segmentCacheKey(url))
+    return hit ? new Uint8Array(await hit.arrayBuffer()) : null
+  } catch {
+    return null
+  }
+}
+
+function cacheSegment(url: string, bytes: Uint8Array, context: any) {
+  try {
+    // @ts-ignore
+    if (typeof caches === 'undefined' || !caches.default) return
+    // @ts-ignore
+    const put = caches.default.put(
+      segmentCacheKey(url),
+      new Response(bytes, { headers: { 'Cache-Control': `public, max-age=${SEGMENT_CACHE_SECONDS}` } })
+    )
+    context?.waitUntil?.(put)
+  } catch {
+    // caching is an optimisation only
+  }
+}
+
+/** Whole body of a small upstream resource (a TS segment), or null when it cannot be had. */
+async function fetchWholeSegment(url: string, ua: string, ref: string, range: string | null): Promise<Uint8Array | null> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 12000)
+  try {
+    const target = new URL(url)
+    if (!['http:', 'https:'].includes(target.protocol)) return null
+    const attempt = async (u: string, r: string) => {
+      const headers = new Headers()
+      headers.set('User-Agent', u)
+      if (!(isVlcUa(u) && !r)) headers.set('Referer', r || target.origin)
+      if (range) headers.set('Range', range)
+      return (await fetchUpstreamHop(target, { method: 'GET', headers, signal: controller.signal })).response
+    }
+    let res = await attempt(ua, ref)
+    if ((res.status === 401 || res.status === 403) && !isVlcUa(ua)) {
+      try { await res.body?.cancel() } catch {}
+      res = await attempt(VLC_UA, '')
+    }
+    if (!res.ok) {
+      try { await res.body?.cancel() } catch {}
+      return null
+    }
+    const reader = res.body?.getReader()
+    if (!reader) return null
+    const chunks: Uint8Array[] = []
+    let total = 0
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (value) {
+        chunks.push(value)
+        total += value.length
+      }
+      if (total > MAX_REPACK_BYTES) {
+        try { await reader.cancel() } catch {}
+        return null
+      }
+    }
+    const all = new Uint8Array(total)
+    let at = 0
+    for (const c of chunks) {
+      all.set(c, at)
+      at += c.length
+    }
+    return all
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
   }
 }
 
@@ -138,6 +225,41 @@ export const onRequest: PagesFunction = async (context) => {
   const customRef = urlObj.searchParams.get('ref') || ''
   const sniff = urlObj.searchParams.get('sniff') === '1'
   const range = sniff ? null : request.headers.get('Range')
+
+  // Safari's native HLS player cannot start on a segment that opens mid-GOP, and some restreams
+  // cut their segments on the clock. `repack=1&seg=1` re-cuts a segment on its first I-picture and
+  // appends the head of the next one, so no picture is lost and every output starts on a key frame.
+  const repack = urlObj.searchParams.get('repack') === '1'
+  const isSegmentRequest = repack && urlObj.searchParams.get('seg') === '1' && !sniff && request.method === 'GET' && !range
+  if (isSegmentRequest) {
+    const nextUrl = urlObj.searchParams.get('next')
+    const curBytes = (await cachedSegment(targetUrl)) ?? (await fetchWholeSegment(targetUrl, customUa, customRef, null))
+    if (curBytes && curBytes.length >= 188 * 4 && curBytes[0] === 0x47) {
+      cacheSegment(targetUrl, curBytes, context)
+      let nextBytes: Uint8Array | null = null
+      if (nextUrl) {
+        nextBytes = (await cachedSegment(nextUrl)) ?? (await fetchWholeSegment(nextUrl, customUa, customRef, null))
+        if (nextBytes) cacheSegment(nextUrl, nextBytes, context)
+      }
+      let out: Uint8Array = curBytes
+      try {
+        out = repackSegment(curBytes, nextBytes)
+      } catch {
+        out = curBytes
+      }
+      return new Response(out, {
+        status: 200,
+        headers: {
+          'Content-Type': 'video/MP2T',
+          'Cache-Control': 'no-cache',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Expose-Headers': '*',
+          'X-Segment-Repacked': nextBytes ? 'with-next' : 'alone',
+        },
+      })
+    }
+    // Could not repack (fetch failed or not TS): fall through to the ordinary path.
+  }
 
   let lastError: string | null = null
   let lastHttpStatus = 0
@@ -304,22 +426,43 @@ export const onRequest: PagesFunction = async (context) => {
         const baseUrl = new URL(finalUrl)
         const proxyBase = `${urlObj.origin}${urlObj.pathname}`
 
-        const buildChildUrl = (raw: string) => {
+        const buildChildUrl = (raw: string, extra?: { seg?: boolean; next?: string | null }) => {
           try {
             const absolute = new URL(raw, baseUrl).toString()
             const p = new URLSearchParams()
             p.set('url', absolute)
             if (effUa) p.set('ua', effUa)
             if (effRef) p.set('ref', effRef)
+            if (repack) p.set('repack', '1')
+            if (extra?.seg) p.set('seg', '1')
+            if (extra?.next) p.set('next', extra.next)
             return `${proxyBase}?${p.toString()}`
           } catch {
             return raw
           }
         }
 
-        const rewrittenText = originalText
-          .split(/\r?\n/)
-          .map((line) => {
+        const lines = originalText.split(/\r?\n/)
+        // For a repacked media playlist: each segment names the one after it (its tail comes from
+        // there), and the newest live segment is held back until its successor exists.
+        const isMedia = repack && lines.some((l) => l.startsWith('#EXTINF'))
+        const hasEndList = lines.some((l) => l.trim() === '#EXT-X-ENDLIST')
+        const segIdx: number[] = []
+        if (isMedia) lines.forEach((l, i) => { if (l.trim() && !l.trim().startsWith('#')) segIdx.push(i) })
+        const dropLines = new Set<number>()
+        if (isMedia && !hasEndList && segIdx.length > 1) {
+          const last = segIdx[segIdx.length - 1]
+          dropLines.add(last)
+          for (let k = last - 1; k >= 0 && lines[k].trim().startsWith('#'); k--) {
+            if (lines[k].startsWith('#EXTINF')) { dropLines.add(k); break }
+            dropLines.add(k)
+          }
+        }
+        const absOf = (raw: string) => { try { return new URL(raw, baseUrl).toString() } catch { return null } }
+
+        const rewrittenText = lines
+          .map((line, i) => {
+            if (dropLines.has(i)) return null
             const lineTrimmed = line.trim()
             if (!lineTrimmed) return line
             if (lineTrimmed.startsWith('#')) {
@@ -327,8 +470,14 @@ export const onRequest: PagesFunction = async (context) => {
               return lineTrimmed.replace(URI_ATTR, (_, dq, sq, bare) => `URI="${buildChildUrl(dq ?? sq ?? bare)}"`)
             }
             // Non-comment line in M3U8 is a playlist or segment URI
+            if (isMedia) {
+              const at = segIdx.indexOf(i)
+              const nextRaw = at >= 0 && at + 1 < segIdx.length ? lines[segIdx[at + 1]].trim() : null
+              return buildChildUrl(lineTrimmed, { seg: true, next: nextRaw ? absOf(nextRaw) : null })
+            }
             return buildChildUrl(lineTrimmed)
           })
+          .filter((l): l is string => l !== null)
           .join('\n')
 
         responseHeaders.set('Content-Type', 'application/vnd.apple.mpegurl; charset=utf-8')

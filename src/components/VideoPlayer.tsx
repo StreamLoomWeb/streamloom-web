@@ -14,7 +14,7 @@ import { classifyStreamUrl, isUnsupportedKind, sniffStreamKind } from '../util/s
 import type { StreamKind } from '../util/streamKind'
 import { startMpegtsEngine } from '../player/engines/mpegts'
 import { startNativeEngine } from '../player/engines/native'
-import { canUseNativeHls, isMseDecodeFailure, markNeedsNativeHls, prefersNativeHls } from '../util/nativeHls'
+import { canUseNativeHls, isMseDecodeFailure, markNeedsNativeHls, prefersNativeHls, repackDisabled } from '../util/nativeHls'
 import {
   getProxyStreamUrl,
   isMixedContent,
@@ -1114,7 +1114,7 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
     // Failover watchdog: re-checks until media stops arriving or the cap is reached.
     const attemptStart = performance.now()
     lastMediaByteAt.current = attemptStart
-    const startIdleMs = isProxied ? START_IDLE_PROXIED_MS : START_IDLE_MS
+    const startIdleMs = isProxied || useNativeHls ? START_IDLE_PROXIED_MS : START_IDLE_MS
     const startCapMs = nativeHlsEngine ? NATIVE_HLS_START_CAP_MS : START_CAP_MS
     const checkStart = () => {
       if (isDisposed) return
@@ -1161,10 +1161,12 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
 
     // Determine target playback URL
     let targetUrl = rawUrl
-    if (isProxied) {
+    if (isProxied || useNativeHls) {
       // No server-side fallback list: the player is the only failover authority, so the
-      // URL it caches and reports is always the one that played.
-      targetUrl = getProxyStreamUrl(rawUrl, stream?.user_agent, stream?.referrer, [], channel.id)
+      // URL it caches and reports is always the one that played. Safari's native player
+      // (used for streams its MSE decoder rejected) needs every segment to start on an
+      // I-picture, which only the edge can guarantee: `repack` has it re-cut them.
+      targetUrl = getProxyStreamUrl(rawUrl, stream?.user_agent, stream?.referrer, [], channel.id, useNativeHls && !repackDisabled())
     } else if (isMixedContent(rawUrl)) {
       targetUrl = tryUpgradeToHttps(rawUrl)
     }

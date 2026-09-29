@@ -81,3 +81,12 @@ export function clearNativeHlsMarks(): void {
     // ignore
   }
 }
+
+/** `localStorage.sl_no_repack = '1'` turns the edge re-cut off (a diagnostic switch, never set by the app). */
+export function repackDisabled(): boolean {
+  try {
+    return localStorage.getItem('sl_no_repack') === '1'
+  } catch {
+    return false
+  }
+}

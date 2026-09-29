@@ -47,7 +47,35 @@ const CORRUPT_VIDEO_MSE = () => {
   }
 }
 
+/** The edge proxy, as far as this test needs it: serves the fixture for `?url=`, rewriting the playlist to proxy URLs. */
+async function serveProxy(context: BrowserContext, requested: string[]) {
+  await context.route(/\/api\/proxy\?/, (route) => {
+    const req = new URL(route.request().url())
+    const target = req.searchParams.get('url') ?? ''
+    requested.push(`proxy:${target}|repack=${req.searchParams.get('repack')}`)
+    const name = new URL(target).pathname.split('/').pop() ?? ''
+    const file = name.endsWith('.m3u8') ? 'i.m3u8' : name
+    if (!/^i\d?\.(m3u8|mpegts)$/.test(file) || target === SECOND_CANDIDATE) {
+      return route.fulfill({ status: 404, headers: { 'access-control-allow-origin': '*' }, body: 'no' })
+    }
+    let body: Buffer | string = fs.readFileSync(new URL(file, FIXTURE_DIR))
+    if (file.endsWith('.m3u8')) {
+      body = body.toString().replace(/^(i\d?\.mpegts)$/gm, (seg) =>
+        `${req.origin}/api/proxy?url=${encodeURIComponent(`https://streams.invalid/${seg}`)}&repack=1`)
+    }
+    return route.fulfill({
+      status: 200,
+      headers: {
+        'access-control-allow-origin': '*',
+        'content-type': file.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : 'video/mp2t',
+      },
+      body,
+    })
+  })
+}
+
 async function serveFixture(context: BrowserContext, requested: string[]) {
+  await serveProxy(context, requested)
   await context.route('https://streams.invalid/**', (route) => {
     const url = route.request().url()
     requested.push(url)
@@ -99,14 +127,18 @@ test('Safari: a stream its MSE decoder rejects reopens in the native engine and 
   await serveFixture(context, requested)
   await openChannel(page, context)
 
-  // Native engine: the element's own src is the stream URL, not an hls.js blob.
-  await expect.poll(async () => (await videoState(page)).src, { timeout: 20_000 }).toBe(STREAM)
+  // Native engine: the element's own src is the stream, through the edge re-cut (`repack=1`),
+  // not an hls.js blob.
+  await expect
+    .poll(async () => (await videoState(page)).src, { timeout: 20_000 })
+    .toMatch(new RegExp(`/api/proxy\\?.*repack=1`))
+  expect((await videoState(page)).src).toContain(encodeURIComponent(STREAM))
   await expect.poll(async () => (await videoState(page)).readyState, { timeout: 20_000 }).toBeGreaterThanOrEqual(2)
   await expect(page.locator('.player__state-overlay--error')).toHaveCount(0)
   // The candidate that plays is kept: no failover to the second one, no proxy retry.
   expect(requested).not.toContain(SECOND_CANDIDATE)
   await page.waitForTimeout(3000)
-  expect((await videoState(page)).src).toBe(STREAM)
+  expect((await videoState(page)).src).toContain(encodeURIComponent(STREAM))
   expect(requested).not.toContain(SECOND_CANDIDATE)
 })
 

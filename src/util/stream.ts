@@ -415,7 +415,8 @@ export function getProxyStreamUrl(
   userAgent?: string | null,
   referrer?: string | null,
   fallbacks?: string[],
-  channelId?: string
+  channelId?: string,
+  repack?: boolean
 ): string {
   if (!rawUrl) return ''
   if (rawUrl.startsWith('/api/proxy') || rawUrl.includes('/api/proxy?url=')) {
@@ -423,6 +424,7 @@ export function getProxyStreamUrl(
   }
   const params = new URLSearchParams()
   params.set('url', rawUrl)
+  if (repack) params.set('repack', '1')
   if (userAgent) params.set('ua', userAgent)
   if (referrer) params.set('ref', referrer)
   if (fallbacks && fallbacks.length > 0) {
