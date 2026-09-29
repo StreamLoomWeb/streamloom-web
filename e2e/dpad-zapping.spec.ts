@@ -40,9 +40,14 @@ test.describe('D-pad zapping while buffering', () => {
       const before = watchId(page)
       await page.keyboard.press('ArrowDown')
       await expect.poll(() => watchId(page), { timeout: 10_000 }).not.toBe(before)
-      seen.push(watchId(page))
+      const now = watchId(page)
+      seen.push(now)
+      // Wait for the player to render the new channel before the next key: the route
+      // remounts it, and a key sent between the URL change and the listener being
+      // re-attached is lost (a test race, not something a remote can produce).
+      await expect(page.locator('.player__hud--top')).toContainText(`Channel ${now.match(/^ch(\d+)/)![1]}`)
     }
-    expect(new Set(seen).size).toBe(6)
+    expect(seen, `zap sequence: ${seen.join(' > ')}`).toHaveLength(new Set(seen).size)
   })
 
   test('ArrowLeft/ArrowRight enter the HUD without changing channel', async ({ page }) => {
