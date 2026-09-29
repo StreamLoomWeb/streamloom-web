@@ -67,6 +67,27 @@
   animation: fadeInDown 0.25s ease-out;
 }
 
+/* Number-entry OSD ("CH 1 2 _") */
+.player__chnum {
+  position: absolute;
+  top: calc(24px + var(--sat));
+  right: 24px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 20px;
+  border-radius: var(--radius-lg);
+  background: rgba(20, 20, 30, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  backdrop-filter: blur(16px);
+  z-index: 50;
+  pointer-events: none;
+}
+.player__chnum-label { font-size: 14px; font-weight: 700; opacity: 0.7; }
+.player__chnum-digits { font-size: 32px; font-weight: 800; letter-spacing: 0.08em; }
+
 @keyframes fadeInDown {
   from {
     opacity: 0;

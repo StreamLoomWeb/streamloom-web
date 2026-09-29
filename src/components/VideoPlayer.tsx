@@ -675,6 +675,9 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
       video.pause()
     }
 
+    try {
+      sessionStorage.setItem('sl_prev_channel', channel.id)
+    } catch {}
     sessionStorage.setItem('sl_last_viewed', target.id)
     ;(document.activeElement as HTMLElement)?.blur?.()
 
@@ -694,7 +697,7 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
         returnTo,
       },
     })
-  }, [returnTo, navigate, destroyHls])
+  }, [returnTo, navigate, destroyHls, channel.id])
 
   const switchChannelCleanly = useCallback((target: EnrichedChannel) => {
     cancelCountdown()
@@ -1349,11 +1352,101 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
   // Keybindings: attached once with stable ref to guarantee zero dropped key events
   const onKeyRef = useRef<(e: KeyboardEvent) => void>(() => {})
 
+  // Number entry: digits build a channel number (1-based position in the
+  // current playlist) that jumps after a short pause. The buffer lives in a ref
+  // so consecutive keydowns never read a stale value; state only drives the OSD.
+  const numberBufRef = useRef('')
+  const numberTimerRef = useRef<number | null>(null)
+  const [numberEntry, setNumberEntry] = useState('')
+
+  const commitNumberEntry = useCallback(() => {
+    if (numberTimerRef.current) {
+      window.clearTimeout(numberTimerRef.current)
+      numberTimerRef.current = null
+    }
+    const n = parseInt(numberBufRef.current, 10)
+    numberBufRef.current = ''
+    setNumberEntry('')
+    if (!Number.isFinite(n)) return
+    const list = allChannelsRef.current
+    const target = n >= 1 ? list[n - 1] : undefined
+    if (!target) {
+      showToast(`No channel ${n}`)
+      return
+    }
+    if (target.id === targetChannelIdRef.current) return
+    targetChannelIdRef.current = target.id
+    switchChannelCleanly(target)
+  }, [showToast, switchChannelCleanly])
+
+  const pushNumberDigit = useCallback((d: string) => {
+    numberBufRef.current = (numberBufRef.current + d).slice(0, 4)
+    setNumberEntry(numberBufRef.current)
+    if (numberTimerRef.current) window.clearTimeout(numberTimerRef.current)
+    numberTimerRef.current = window.setTimeout(commitNumberEntry, 1500)
+  }, [commitNumberEntry])
+
+  const cancelNumberEntry = useCallback(() => {
+    if (numberTimerRef.current) {
+      window.clearTimeout(numberTimerRef.current)
+      numberTimerRef.current = null
+    }
+    numberBufRef.current = ''
+    setNumberEntry('')
+  }, [])
+
+  useEffect(() => () => {
+    if (numberTimerRef.current) window.clearTimeout(numberTimerRef.current)
+  }, [])
+
+  const goToLastChannel = useCallback(() => {
+    let prevId: string | null = null
+    try {
+      prevId = sessionStorage.getItem('sl_prev_channel')
+    } catch {}
+    const target = prevId ? allChannelsRef.current.find((c) => c.id === prevId) : undefined
+    if (!target || target.id === targetChannelIdRef.current) {
+      showToast('No previous channel')
+      return
+    }
+    targetChannelIdRef.current = target.id
+    switchChannelCleanly(target)
+  }, [showToast, switchChannelCleanly])
+
   const onKey = useCallback((e: KeyboardEvent) => {
     const targetTag = (e.target as HTMLElement)?.tagName
     if (targetTag === 'INPUT' || targetTag === 'TEXTAREA' || targetTag === 'SELECT') return
 
     handleMouseMove()
+
+    // Digits first, so no other branch below can swallow them. Remotes send
+    // plain 0-9 (numpad included); modified keys stay browser shortcuts.
+    if (/^[0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault()
+      pushNumberDigit(e.key)
+      return
+    }
+    if (numberBufRef.current) {
+      // A pending number owns Enter (jump now), Backspace (delete a digit,
+      // never exit by accident) and Escape (cancel).
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        commitNumberEntry()
+        return
+      }
+      if (e.key === 'Backspace') {
+        e.preventDefault()
+        numberBufRef.current = numberBufRef.current.slice(0, -1)
+        if (numberBufRef.current) pushNumberDigit('')
+        else cancelNumberEntry()
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        cancelNumberEntry()
+        return
+      }
+    }
 
     if (showSubtitleMenu || showAudioMenu) {
       if (e.key === 'Escape' || e.key === 'Backspace') {
@@ -1411,7 +1504,7 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
       e.key === '[' ||
       e.key === 'p' ||
       e.key === 'P' ||
-      e.key === 'ChannelDown' ||
+      e.key === 'ChannelUp' ||
       e.key === 'PageUp' ||
       e.key === 'MediaTrackPrevious'
     ) {
@@ -1422,12 +1515,15 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
       e.key === ']' ||
       e.key === 'n' ||
       e.key === 'N' ||
-      e.key === 'ChannelUp' ||
+      e.key === 'ChannelDown' ||
       e.key === 'PageDown' ||
       e.key === 'MediaTrackNext'
     ) {
       e.preventDefault()
       goToNextChannel()
+    } else if (e.key === 'l' || e.key === 'L' || e.key === 'MediaLast') {
+      e.preventDefault()
+      goToLastChannel()
     } else if (e.key === 'Escape' || e.key === 'Backspace') {
       e.preventDefault()
       handleBack()
@@ -1461,6 +1557,10 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
     handleMouseMove,
     goToPrevChannel,
     goToNextChannel,
+    goToLastChannel,
+    pushNumberDigit,
+    commitNumberEntry,
+    cancelNumberEntry,
     handleBack,
     togglePlayPause,
     toggleFullscreen,
@@ -1719,6 +1819,16 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
               ← Back
             </button>
           </div>
+        </div>
+      )}
+
+      {numberEntry && (
+        <div className="player__chnum" role="status" aria-live="polite">
+          <span className="player__chnum-label">CH</span>
+          <span className="player__chnum-digits">
+            {numberEntry.split('').join(' ')}
+            {numberEntry.length < 4 ? ' _' : ''}
+          </span>
         </div>
       )}
 

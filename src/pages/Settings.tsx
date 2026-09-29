@@ -29,6 +29,9 @@ export function Settings() {
   const [brokenCount, setBrokenCount] = useState(() => getBrokenCount())
   const [hiddenIds, setHiddenIds] = useState(() => [...getHiddenSet()])
   const [clearedNotice, setClearedNotice] = useState(false)
+  // Inline confirmation for the two destructive buttons (no blocking window.confirm: it is
+  // unreachable with a TV remote and jarring on touch).
+  const [pendingConfirm, setPendingConfirm] = useState<'cache' | 'recent' | null>(null)
   const [clearedBrokenNotice, setClearedBrokenNotice] = useState(false)
   const [clearedRecentNotice, setClearedRecentNotice] = useState(false)
 
@@ -77,9 +80,7 @@ export function Settings() {
   }
 
   const handleClearCache = () => {
-    if (!window.confirm('Clear the cached catalogue and stream health records? This does not touch your Continue Watching history or favourites.')) {
-      return
-    }
+    setPendingConfirm(null)
     try {
       // The catalogue lives in IndexedDB now, so clear that too. Continue
       // Watching (sl_recent_v1) is a separate, user-visible history — it has
@@ -102,9 +103,7 @@ export function Settings() {
   }
 
   const handleClearRecent = () => {
-    if (!window.confirm('Clear your Continue Watching history? This cannot be undone.')) {
-      return
-    }
+    setPendingConfirm(null)
     try {
       localStorage.removeItem('sl_recent_v1')
       setClearedRecentNotice(true)
@@ -254,18 +253,40 @@ export function Settings() {
           <div className="settings-card__body">
             <div className="settings-item">
               <div className="settings-item__info">
+                <strong>Refresh Catalogue</strong>
+                <span>Fetch the latest channel list now</span>
+              </div>
+              <button className="settings-btn" onClick={refresh}>
+                Refresh
+              </button>
+            </div>
+
+            <div className="settings-item">
+              <div className="settings-item__info">
                 <strong>Cached Channels</strong>
                 <span>
                   {channels.length} {allChannels && allChannels.length !== channels.length ? `visible (${allChannels.length} total)` : 'channels'} indexed locally
                 </span>
               </div>
-              <button
-                className="settings-btn settings-btn--danger"
-                onClick={handleClearCache}
-                disabled={clearedNotice}
-              >
-                {clearedNotice ? 'Cleared!' : 'Clear Cache'}
-              </button>
+              {pendingConfirm === 'cache' ? (
+                <div className="settings-confirm" role="alertdialog" aria-label="Yes, clear cache">
+                  <span className="settings-confirm__text">Clear the cached catalogue and stream health? Favourites and history stay.</span>
+                  <button className="settings-btn settings-btn--danger" onClick={handleClearCache} autoFocus>
+                    Yes, clear cache
+                  </button>
+                  <button className="settings-btn" onClick={() => setPendingConfirm(null)}>
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  className="settings-btn settings-btn--danger"
+                  onClick={() => setPendingConfirm('cache')}
+                  disabled={clearedNotice}
+                >
+                  {clearedNotice ? 'Cleared!' : 'Clear Cache'}
+                </button>
+              )}
             </div>
 
             <div className="settings-item">
@@ -273,13 +294,25 @@ export function Settings() {
                 <strong>Continue Watching History</strong>
                 <span>Channels remembered for the Continue Watching row on Home</span>
               </div>
-              <button
-                className="settings-btn settings-btn--danger"
-                onClick={handleClearRecent}
-                disabled={clearedRecentNotice}
-              >
-                {clearedRecentNotice ? 'Cleared!' : 'Clear History'}
-              </button>
+              {pendingConfirm === 'recent' ? (
+                <div className="settings-confirm" role="alertdialog" aria-label="Yes, clear history">
+                  <span className="settings-confirm__text">Clear Continue Watching? This cannot be undone.</span>
+                  <button className="settings-btn settings-btn--danger" onClick={handleClearRecent} autoFocus>
+                    Yes, clear history
+                  </button>
+                  <button className="settings-btn" onClick={() => setPendingConfirm(null)}>
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  className="settings-btn settings-btn--danger"
+                  onClick={() => setPendingConfirm('recent')}
+                  disabled={clearedRecentNotice}
+                >
+                  {clearedRecentNotice ? 'Cleared!' : 'Clear History'}
+                </button>
+              )}
             </div>
 
             <div className="settings-item settings-item--stacked">

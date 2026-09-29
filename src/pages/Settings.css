@@ -366,3 +366,17 @@ input:checked + .toggle-slider:before {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+/* Inline confirmation that replaces window.confirm on the destructive buttons */
+.settings-confirm {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.settings-confirm__text {
+  flex: 1 1 220px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}

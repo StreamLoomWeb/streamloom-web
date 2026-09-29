@@ -31,7 +31,7 @@
 
   --text-primary: #f3f4f6;
   --text-secondary: #9499a8;
-  --text-muted: #5e6473;
+  --text-muted: #8b91a0; /* >=4.5:1 on every dark surface */
   --text-on-accent: #ffffff;
 
   --border: rgba(255, 255, 255, 0.08);
@@ -108,7 +108,7 @@
 
   --text-primary: #12131a;
   --text-secondary: #58596b;
-  --text-muted: #8b8d9f;
+  --text-muted: #636578; /* >=4.5:1 on every light surface */
   --text-on-accent: #ffffff;
 
   --border: rgba(0, 0, 0, 0.08);
