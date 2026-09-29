@@ -230,7 +230,7 @@ export const onRequest: PagesFunction = async (context) => {
   // cut their segments on the clock. `repack=1&seg=1` re-cuts a segment on its first I-picture and
   // appends the head of the next one, so no picture is lost and every output starts on a key frame.
   const repack = urlObj.searchParams.get('repack') === '1'
-  const isSegmentRequest = repack && urlObj.searchParams.get('seg') === '1' && !sniff && request.method === 'GET' && !range
+  const isSegmentRequest = repack && urlObj.searchParams.get('seg') === '1' && !sniff && (request.method === 'GET' || request.method === 'HEAD')
   if (isSegmentRequest) {
     const nextUrl = urlObj.searchParams.get('next')
     const curBytes = (await cachedSegment(targetUrl)) ?? (await fetchWholeSegment(targetUrl, customUa, customRef, null))
@@ -247,16 +247,32 @@ export const onRequest: PagesFunction = async (context) => {
       } catch {
         out = curBytes
       }
-      return new Response(out, {
-        status: 200,
-        headers: {
-          'Content-Type': 'video/MP2T',
-          'Cache-Control': 'no-cache',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Expose-Headers': '*',
-          'X-Segment-Repacked': nextBytes ? 'with-next' : 'alone',
-        },
-      })
+      // The player may ask for a byte range or only the headers: answer from the repacked bytes so
+      // it never sees the original, mid-GOP segment.
+      const headers: Record<string, string> = {
+        'Content-Type': 'video/MP2T',
+        'Cache-Control': 'no-cache',
+        'Accept-Ranges': 'bytes',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Expose-Headers': '*',
+        'X-Segment-Repacked': nextBytes ? 'with-next' : 'alone',
+      }
+      const total = out.length
+      const m = range ? /^bytes=(\d*)-(\d*)$/.exec(range.trim()) : null
+      if (m && (m[1] !== '' || m[2] !== '')) {
+        let start = m[1] === '' ? Math.max(0, total - Number(m[2])) : Number(m[1])
+        let end = m[1] === '' || m[2] === '' ? total - 1 : Math.min(Number(m[2]), total - 1)
+        if (start >= total || start > end) {
+          return new Response(null, { status: 416, headers: { ...headers, 'Content-Range': `bytes */${total}` } })
+        }
+        end = Math.max(end, start)
+        start = Math.min(start, total - 1)
+        headers['Content-Range'] = `bytes ${start}-${end}/${total}`
+        headers['Content-Length'] = String(end - start + 1)
+        return new Response(request.method === 'HEAD' ? null : out.subarray(start, end + 1), { status: 206, headers })
+      }
+      headers['Content-Length'] = String(total)
+      return new Response(request.method === 'HEAD' ? null : out, { status: 200, headers })
     }
     // Could not repack (fetch failed or not TS): fall through to the ordinary path.
   }

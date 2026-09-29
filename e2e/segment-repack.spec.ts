@@ -245,6 +245,42 @@ test('a segment request returns the repacked bytes, starting on an I-picture', a
   expect(Array.from(out)).toEqual(Array.from(repackSegment(S1, S2)))
 })
 
+const segQs = () => `url=${encodeURIComponent(`${base}/s1.ts`)}&repack=1&seg=1&next=${encodeURIComponent(`${base}/s2.ts`)}`
+const callWith = (init: RequestInit) =>
+  Promise.resolve(proxyHandler(ctx(new Request(`${ORIGIN}/api/proxy?${segQs()}`, init)))) as Promise<Response>
+
+test('byte-range and HEAD requests are answered from the repacked bytes, never the original', async () => {
+  const expected = repackSegment(S1, S2)
+  const full = await callWith({ headers: { Range: 'bytes=0-' } })
+  expect(full.status).toBe(206)
+  expect(full.headers.get('content-range')).toBe(`bytes 0-${expected.length - 1}/${expected.length}`)
+  expect(Array.from(new Uint8Array(await full.arrayBuffer()))).toEqual(Array.from(expected))
+
+  const head2 = await callWith({ headers: { Range: 'bytes=0-1' } })
+  expect(head2.status).toBe(206)
+  expect(head2.headers.get('content-length')).toBe('2')
+  expect(Array.from(new Uint8Array(await head2.arrayBuffer()))).toEqual(Array.from(expected.subarray(0, 2)))
+
+  const mid = await callWith({ headers: { Range: 'bytes=188-375' } })
+  expect(Array.from(new Uint8Array(await mid.arrayBuffer()))).toEqual(Array.from(expected.subarray(188, 376)))
+
+  const tail = await callWith({ headers: { Range: 'bytes=-188' } })
+  expect(Array.from(new Uint8Array(await tail.arrayBuffer()))).toEqual(Array.from(expected.subarray(expected.length - 188)))
+
+  const past = await callWith({ headers: { Range: `bytes=${expected.length + 5}-` } })
+  expect(past.status).toBe(416)
+
+  const head = await callWith({ method: 'HEAD' })
+  expect(head.status).toBe(200)
+  expect(head.headers.get('content-length')).toBe(String(expected.length))
+  expect(head.headers.get('accept-ranges')).toBe('bytes')
+  expect(await head.text()).toBe('')
+
+  // and a plain GET now carries an exact Content-Length too
+  const plain = await callWith({})
+  expect(plain.headers.get('content-length')).toBe(String(expected.length))
+})
+
 test('when the origin fails, a segment request falls back to the ordinary path and never throws', async () => {
   const res = await call(`url=${encodeURIComponent(`${base}/missing.ts`)}&repack=1&seg=1&next=${encodeURIComponent(`${base}/s2.ts`)}`)
   expect(res.status).toBeGreaterThanOrEqual(400)

@@ -1,0 +1,180 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Safari playback lab</title>
+<style>
+  html,body{margin:0;height:100%;background:#111;color:#eee;font:14px/1.4 ui-monospace,Menlo,monospace}
+  #stage{position:relative;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;background:#000}
+  video,canvas{max-width:100%;max-height:100%;background:#000}
+  #hud{position:fixed;left:0;right:0;top:0;padding:10px 14px;background:rgba(0,0,0,.72);z-index:5}
+  #hud b{color:#ff0;font-size:18px}
+  #stats{color:#8f8;white-space:pre-wrap}
+  #help{position:fixed;left:0;right:0;bottom:0;padding:8px 14px;background:rgba(0,0,0,.72);color:#aaa;z-index:5}
+</style></head><body>
+<div id="hud"><b id="lab"></b><div id="stats"></div></div>
+<div id="stage"></div>
+<div id="help">→ next option &nbsp; ← previous &nbsp; R restart current &nbsp; (all variants start muted; press M to unmute) &nbsp; you tell me the number that shows a PICTURE</div>
+<script src="hls.js"></script><script src="mpegts.js"></script>
+<script>
+const MNX = 'http://59.103.38.46:8000/play/a052/index.m3u8'
+const PROXY = u => 'https://streamloom.softarchium.com/api/proxy?url=' + encodeURIComponent(u)
+const CONTROL = 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8'
+const stage = document.getElementById('stage'), lab = document.getElementById('lab'), statsEl = document.getElementById('stats')
+let cur = null, idx = 0, t0 = 0, muted = true, canvasFrames = 0, note = ''
+
+const post = (o) => fetch('/log', { method: 'POST', body: JSON.stringify({ ...o, run: location.search }) }).catch(() => {})
+function mkVideo() {
+  const v = document.createElement('video')
+  v.playsInline = true; v.muted = muted; v.autoplay = true; v.controls = false
+  v.style.width = '100%'; v.style.height = '100%'
+  stage.replaceChildren(v); return v
+}
+const hlsCfg = (extra = {}) => ({ enableWorker: false, lowLatencyMode: true, backBufferLength: 15, maxBufferLength: 20, maxMaxBufferLength: 30, maxBufferHole: 0.5, nudgeMaxRetry: 3, liveSyncDurationCount: 2, liveMaxLatencyDurationCount: 4, startFragPrefetch: true, testBandwidth: false, ...extra })
+const playWhenReady = (v) => v.addEventListener('loadedmetadata', () => v.play().catch(e => note = 'play rejected: ' + e.name))
+
+// ---- variants ----
+const V = [
+  { label: 'CONTROL: normal https HLS via hls.js (must show picture)', run() { const v = mkVideo(); const h = new Hls(hlsCfg()); h.loadSource(CONTROL); h.attachMedia(v); h.on(Hls.Events.MANIFEST_PARSED, () => v.play().catch(()=>{})); return () => h.destroy() } },
+  { label: 'MNX native <video src>, via our proxy', run() { const v = mkVideo(); v.src = PROXY(MNX); playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'MNX native <video src>, DIRECT from origin (no proxy)', run() { const v = mkVideo(); v.src = MNX; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'MNX hls.js (MediaSource), via proxy — app config', run() { const v = mkVideo(); const h = new Hls(hlsCfg()); h.on(Hls.Events.ERROR, (_, d) => note = d.details); h.loadSource(PROXY(MNX)); h.attachMedia(v); h.on(Hls.Events.MANIFEST_PARSED, () => v.play().catch(()=>{})); return () => h.destroy() } },
+  { label: 'MNX hls.js forced ManagedMediaSource (preferManagedMediaSource:true)', run() { const v = mkVideo(); const h = new Hls(hlsCfg({ preferManagedMediaSource: true })); h.on(Hls.Events.ERROR, (_, d) => note = d.details); h.loadSource(PROXY(MNX)); h.attachMedia(v); h.on(Hls.Events.MANIFEST_PARSED, () => v.play().catch(()=>{})); return () => h.destroy() } },
+  { label: 'MNX hls.js forced classic MediaSource (preferManagedMediaSource:false)', run() { const v = mkVideo(); const h = new Hls(hlsCfg({ preferManagedMediaSource: false })); h.on(Hls.Events.ERROR, (_, d) => note = d.details); h.loadSource(PROXY(MNX)); h.attachMedia(v); h.on(Hls.Events.MANIFEST_PARSED, () => v.play().catch(()=>{})); return () => h.destroy() } },
+  { label: 'MNX hls.js, low-latency OFF, start on lowest level, no prefetch', run() { const v = mkVideo(); const h = new Hls(hlsCfg({ lowLatencyMode: false, startLevel: 0, startFragPrefetch: false })); h.on(Hls.Events.ERROR, (_, d) => note = d.details); h.loadSource(PROXY(MNX)); h.attachMedia(v); h.on(Hls.Events.MANIFEST_PARSED, () => v.play().catch(()=>{})); return () => h.destroy() } },
+  { label: 'MNX hls.js, video-only remux (drop audio tracks)', run() { const v = mkVideo(); const h = new Hls(hlsCfg()); h.on(Hls.Events.ERROR, (_, d) => note = d.details); h.on(Hls.Events.BUFFER_CODECS, (_, d) => { delete d.audio }); h.loadSource(PROXY(MNX)); h.attachMedia(v); h.on(Hls.Events.MANIFEST_PARSED, () => v.play().catch(()=>{})); return () => h.destroy() } },
+  { label: 'MNX mpegts.js (different TS→MSE remuxer) on one live segment', async runAsync() {
+      const v = mkVideo(); let dead = false; let player = null
+      const master = await (await fetch(PROXY(MNX))).text(); const variant = master.split('\n').find(l => l.startsWith('http'))
+      const seg = (await (await fetch(variant)).text()).split('\n').filter(l => l.startsWith('http')).slice(-2)[0]
+      if (dead) return
+      player = mpegts.createPlayer({ type: 'mpegts', isLive: false, url: seg }, { enableStashBuffer: true })
+      player.attachMediaElement(v); player.load(); player.on(mpegts.Events.ERROR, (a, b) => note = 'mpegts error ' + a + ' ' + b); v.play().catch(()=>{})
+      return () => { dead = true; try { player && player.destroy() } catch {} } } },
+  { label: 'MNX WebCodecs: decode each field ourselves → canvas (video only, experimental)', async runAsync() { return webcodecsRun(false) } },
+  { label: 'MNX WebCodecs with hardwareAcceleration: prefer-software', async runAsync() { return webcodecsRun(false, 'prefer-software') } },
+  { label: 'CONTROL WebCodecs: same code on a normal progressive stream (does OUR code work in Safari?)', async runAsync() { return webcodecsRun(true) } },
+  { label: 'LOCAL raw MNX segments (VOD copy of origin bytes, native) — expected to FAIL', run() { const v = mkVideo(); v.src = 'trim/raw.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'LOCAL same segments, timestamps rebased below 2^31 (native) — THE HYPOTHESIS', run() { const v = mkVideo(); v.src = 'trim/shift.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'LOCAL ffmpeg -c copy remux (native) — known to work earlier', run() { const v = mkVideo(); v.src = 'trim/ffc/i.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'LOCAL raw segments as a LIVE-style playlist (no ENDLIST, native)', run() { const v = mkVideo(); v.src = 'trim/raw-live.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'LOCAL rebased segments as a LIVE-style playlist (native)', run() { const v = mkVideo(); v.src = 'trim/shift-live.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'LOCAL raw segments as an EVENT playlist (native)', run() { const v = mkVideo(); v.src = 'trim/raw-event.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'REAL MNX live playlist with EXT-X-PLAYLIST-TYPE:EVENT injected (native, segments via proxy)', run() { const v = mkVideo(); v.src = '/evt.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'LOCAL VOD of raw segments starting at segment 1 (native)', run() { const v = mkVideo(); v.src = 'trim/vod-from1.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'LOCAL VOD of raw segments starting at segment 2 (native)', run() { const v = mkVideo(); v.src = 'trim/vod-from2.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'LOCAL VOD of raw segments starting at segment 3 (native)', run() { const v = mkVideo(); v.src = 'trim/vod-from3.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'LOCAL ffmpeg -c copy re-segmented from raw segments 1-3 (VOD, native)', run() { const v = mkVideo(); v.src = 'trim/ffc1/i.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'LOCAL rebased-timestamps segments 1-3 (VOD, native)', run() { const v = mkVideo(); v.src = 'trim/shift-from1.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'G1 complete segments: VOD from segment 0 (native)', run() { const v = mkVideo(); v.src = 'trim/good/vod-all.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'G2 complete segments: VOD from segment 1 (native)', run() { const v = mkVideo(); v.src = 'trim/good/vod-from1.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'G3 complete segments: VOD from segment 2 (native)', run() { const v = mkVideo(); v.src = 'trim/good/vod-from2.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'G4 complete segments as LIVE-style playlist (native)', run() { const v = mkVideo(); v.src = 'trim/good/live.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'G5 complete segments as EVENT playlist (native)', run() { const v = mkVideo(); v.src = 'trim/good/event.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'G6 complete segments rebased timestamps, VOD from segment 1 (native)', run() { const v = mkVideo(); v.src = 'trim/good/vod-from1-rebased.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'G7 complete segments rebased timestamps, LIVE-style (native)', run() { const v = mkVideo(); v.src = 'trim/good/live-rebased.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'T1 TRIMMED to first I-picture: VOD from segment 0 (native)', run() { const v = mkVideo(); v.src = 'trim/good/trim-vod-all.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'T2 TRIMMED: VOD from segment 2 (was failing raw) (native)', run() { const v = mkVideo(); v.src = 'trim/good/trim-vod-from2.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'T3 TRIMMED: LIVE-style playlist (native)', run() { const v = mkVideo(); v.src = 'trim/good/trim-live.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'T4 TRIMMED: EVENT playlist (native)', run() { const v = mkVideo(); v.src = 'trim/good/trim-event.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'R1 ffmpeg re-cut on I-pictures (nothing dropped): VOD (native)', run() { const v = mkVideo(); v.src = 'trim/good/rs/vod.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'R2 ffmpeg re-cut on I-pictures: LIVE-style playlist (native)', run() { const v = mkVideo(); v.src = 'trim/good/rs/live.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'P1 OUR repackSegment (I-aligned, loss-free): VOD (native)', run() { const v = mkVideo(); v.src = 'trim/good/rp-vod.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'P2 OUR repackSegment (I-aligned, loss-free): LIVE-style (native)', run() { const v = mkVideo(); v.src = 'trim/good/rp-live.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'P3 repackSegment, 3 outputs from 4 complete segments, true durations: LIVE-style (native)', run() { const v = mkVideo(); v.src = 'trim/g4/live.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'P4 same, VOD (native)', run() { const v = mkVideo(); v.src = 'trim/g4/vod.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'PROD MNX native via proxy WITH repack=1 (exactly what the app requests)', run() { const v = mkVideo(); v.src = PROXY(MNX) + '&repack=1'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'SIM local repacked LIVE playlist, segments delivered at ~250 KB/s + 1.2s delay', run() { const v = mkVideo(); v.src = 'trim/g4/live-slow250.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+  { label: 'SIM local repacked LIVE playlist, segments delivered at ~600 KB/s + 1.2s delay', run() { const v = mkVideo(); v.src = 'trim/g4/live-slow600.m3u8'; playWhenReady(v); return () => { v.removeAttribute('src'); v.load() } } },
+]
+
+
+
+function sliceIsI(nal) { // nal[0] header; parse first_mb_in_slice, slice_type (Exp-Golomb)
+  let bit = 8; const rd = () => (nal[bit >> 3] >> (7 - (bit & 7))) & 1
+  const ue = () => { let z = 0; while (bit < nal.length * 8 && !rd()) { z++; bit++ } bit++; let v = 1; for (let i = 0; i < z; i++) { v = (v << 1) | rd(); bit++ } return v - 1 }
+  ue(); const st = ue(); return st % 5 === 2 || st % 5 === 4 }
+function splitNals(d) { const out = []; let i = 0, start = -1
+  while (i + 3 <= d.length) { if (d[i] === 0 && d[i + 1] === 0 && (d[i + 2] === 1 || (d[i + 2] === 0 && d[i + 3] === 1))) { const sc = d[i + 2] === 1 ? 3 : 4; if (start >= 0) out.push(d.subarray(start, i)); start = i + sc; i += sc } else i++ }
+  if (start >= 0) out.push(d.subarray(start)); return out }
+function toAvcc(nals) { let n = 0; nals.forEach(x => n += 4 + x.length); const o = new Uint8Array(n); let k = 0; nals.forEach(x => { o[k] = x.length >>> 24; o[k + 1] = x.length >>> 16 & 255; o[k + 2] = x.length >>> 8 & 255; o[k + 3] = x.length & 255; o.set(x, k + 4); k += 4 + x.length }); return o }
+async function webcodecsRun(control, hw) {
+  const cv = document.createElement('canvas'); cv.width = 768; cv.height = 576; stage.replaceChildren(cv)
+  const ctx = cv.getContext('2d'); let dead = false; canvasFrames = 0
+  if (typeof VideoDecoder === 'undefined') { note = 'WebCodecs VideoDecoder not available in this Safari'; return () => {} }
+  let segs
+  if (control) { const base = CONTROL.replace(/[^/]*$/, ''); const m = await (await fetch(CONTROL)).text(); const vr = m.split('\n').find(l => l && !l.startsWith('#')); const vurl = new URL(vr, CONTROL).href
+    const pl = await (await fetch(vurl)).text(); segs = pl.split('\n').filter(l => l && !l.startsWith('#')).map(l => new URL(l, vurl).href) }
+  else { const master = await (await fetch(PROXY(MNX))).text(); const variant = master.split('\n').find(l => l.startsWith('http'))
+    segs = (await (await fetch(variant)).text()).split('\n').filter(l => l.startsWith('http')).slice(-2) }
+  const buf = new Uint8Array(await (await fetch(segs[0])).arrayBuffer())
+  // --- minimal TS demux: PAT -> PMT -> video PID (stream_type 0x1B), reassemble PES ---
+  let pmtPid = -1, vPid = -1; const pes = []; let curPes = null
+  for (let o = 0; o + 188 <= buf.length; o += 188) {
+    if (buf[o] !== 0x47) continue
+    const pusi = !!(buf[o + 1] & 0x40), pid = ((buf[o + 1] & 0x1f) << 8) | buf[o + 2], afc = (buf[o + 3] >> 4) & 3
+    let p = o + 4; if (afc & 2) p += 1 + buf[o + 4]; if (!(afc & 1)) continue
+    if (pid === 0 && pmtPid < 0) { p += pusi ? 1 + buf[p] : 0; pmtPid = ((buf[p + 10] & 0x1f) << 8) | buf[p + 11]; continue }
+    if (pid === pmtPid && vPid < 0) { p += pusi ? 1 + buf[p] : 0; const secLen = ((buf[p + 1] & 0xf) << 8) | buf[p + 2]; const pil = ((buf[p + 10] & 0xf) << 8) | buf[p + 11]; let q = p + 12 + pil; const end = p + 3 + secLen - 4
+      while (q + 5 <= end) { const st = buf[q], ep = ((buf[q + 1] & 0x1f) << 8) | buf[q + 2], il = ((buf[q + 3] & 0xf) << 8) | buf[q + 4]; if (st === 0x1b && vPid < 0) vPid = ep; q += 5 + il } continue }
+    if (pid === vPid && vPid >= 0) {
+      if (pusi) { if (curPes) pes.push(curPes); curPes = { chunks: [], pts: null }
+        const hl = buf[p + 8]; if (buf[p + 7] & 0x80) { const b = buf.subarray(p + 9, p + 14); curPes.pts = ((b[0] & 0xe) * 536870912) + (b[1] << 22) + ((b[2] & 0xfe) << 14) + (b[3] << 7) + (b[4] >> 1) }
+        p += 9 + hl }
+      if (curPes) curPes.chunks.push(buf.slice(p, o + 188))
+    }
+  }
+  if (curPes) pes.push(curPes)
+  const aus = pes.map(x => { let n = 0; x.chunks.forEach(c => n += c.length); const d = new Uint8Array(n); let k = 0; x.chunks.forEach(c => { d.set(c, k); k += c.length }); return { d, pts: x.pts } }).filter(a => a.pts !== null)
+  note = `demuxed ${aus.length} video PES (vPid ${vPid})`
+  // find SPS for codec string
+  let codec = 'avc1.4d401f'
+  for (const a of aus) { for (let i = 0; i + 8 < a.d.length; i++) if (a.d[i] === 0 && a.d[i + 1] === 0 && (a.d[i + 2] === 1 || (a.d[i + 2] === 0 && a.d[i + 3] === 1))) { const s = a.d[i + 2] === 1 ? i + 3 : i + 4; if ((a.d[s] & 0x1f) === 7) { const h = n => n.toString(16).padStart(2, '0'); codec = 'avc1.' + h(a.d[s + 1]) + h(a.d[s + 2]) + h(a.d[s + 3]); i = a.d.length; break } } if (codec !== 'avc1.4d401f') break }
+  let sps = null, pps = null
+  for (const a of aus) { for (const nl of splitNals(a.d)) { const t = nl[0] & 0x1f; if (t === 7 && !sps) sps = nl; if (t === 8 && !pps) pps = nl } if (sps && pps) break }
+  if (!sps || !pps) { note += ' | no SPS/PPS found'; return () => {} }
+  const avcC = new Uint8Array(8 + sps.length + 3 + pps.length); avcC.set([1, sps[1], sps[2], sps[3], 0xff, 0xe1, sps.length >> 8, sps.length & 255]); avcC.set(sps, 8); const q = 8 + sps.length; avcC.set([1, pps.length >> 8, pps.length & 255], q); avcC.set(pps, q + 3)
+  const cfg = { codec, description: avcC, optimizeForLatency: true, ...(hw ? { hardwareAcceleration: hw } : {}) }
+  let sup = null; try { sup = await VideoDecoder.isConfigSupported(cfg) } catch (e) { note = 'isConfigSupported threw ' + e.message; return () => {} }
+  note += ` codec ${codec} supported=${sup && sup.supported}`
+  if (!sup || !sup.supported) return () => {}
+  const frames = []; let fed = 0, outs = 0, keys = 0
+  const dec = new VideoDecoder({ output: f => { outs++; frames.push(f) }, error: e => { note += ' | decoder error: ' + e.message } })
+  dec.configure(cfg)
+  const isKey = d => { for (let i = 0; i + 4 < d.length; i++) if (d[i] === 0 && d[i + 1] === 0 && (d[i + 2] === 1 || (d[i + 2] === 0 && d[i + 3] === 1))) { const s = d[i + 2] === 1 ? i + 3 : i + 4; const t = d[s] & 0x1f; if (t === 5 || t === 7) return true } return false }
+  const base = aus[0].pts
+  let started = false
+  for (const a of aus) { const nl0 = splitNals(a.d); const key = nl0.some(x => { const t = x[0] & 0x1f; return t === 5 || (t === 1 && sliceIsI(x)) }); if (!started && !key) continue; started = true; fed++; if (key) keys++
+    try { dec.decode(new EncodedVideoChunk({ type: key ? 'key' : 'delta', timestamp: Math.round((a.pts - base) * 100 / 9), data: toAvcc(splitNals(a.d).filter(x => { const t = x[0] & 0x1f; return t !== 9 && t !== 7 && t !== 8 })) })) } catch (e) { note += ' | decode threw ' + e.message; break } }
+  dec.flush().then(() => { note += ` | flushed fed=${fed} keys=${keys} outputs=${outs}` }).catch(e => { note += ' | flush failed: ' + e.message })
+  // play frames at their timestamps (fields alternate: drawn scaled to full frame, i.e. bob deinterlace)
+  const start = performance.now(); let n = 0
+  const tick = () => { if (dead) return
+    const el = (performance.now() - start) * 1000
+    while (frames.length && frames[0].timestamp <= el) { const f = frames.shift(); ctx.drawImage(f, 0, 0, cv.width, cv.height); note = note.replace(/ \| drawn \d+.*/, '') + ` | drawn ${++n} (${f.displayWidth}x${f.displayHeight})`; canvasFrames = n; f.close() }
+    requestAnimationFrame(tick) }
+  tick()
+  return () => { dead = true; try { dec.close() } catch {} }
+}
+
+// ---- runner ----
+async function go(i) {
+  if (cur) { try { cur() } catch {} cur = null }
+  idx = (i + V.length) % V.length; note = ''; canvasFrames = 0; t0 = performance.now()
+  lab.textContent = `#${idx} of ${V.length - 1}  ${V[idx].label}`
+  const my = idx
+  const r = V[idx].runAsync ? await V[idx].runAsync().catch(e => { note = 'ERR ' + e.message; return () => {} }) : V[idx].run()
+  if (my !== idx) { try { r && r() } catch {}; return }
+  cur = r
+}
+addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight') go(idx + 1); else if (e.key === 'ArrowLeft') go(idx - 1)
+  else if (e.key === 'r' || e.key === 'R') go(idx)
+  else if (e.key === 'm' || e.key === 'M') { muted = !muted; const v = stage.querySelector('video'); if (v) { v.muted = muted; v.play().catch(()=>{}) } }
+})
+setInterval(() => {
+  const v = stage.querySelector('video'); let s = `t=${((performance.now() - t0) / 1000).toFixed(0)}s  `
+  if (v) { const q = v.getVideoPlaybackQuality ? v.getVideoPlaybackQuality() : {}; const b = v.buffered; s += `readyState=${v.readyState} time=${v.currentTime.toFixed(1)} paused=${v.paused} frames=${q.totalVideoFrames} dropped=${q.droppedVideoFrames} videoWidth=${v.videoWidth} buffered=${b.length ? b.start(0).toFixed(1) + '-' + b.end(b.length - 1).toFixed(1) : '-'}`
+    post({ idx, label: V[idx].label, t: Math.round(performance.now() - t0), rs: v.readyState, ct: v.currentTime, frames: q.totalVideoFrames, dropped: q.droppedVideoFrames, vw: v.videoWidth, note }) }
+  else { s += `canvas frames drawn=${canvasFrames}`; post({ idx, label: V[idx].label, t: Math.round(performance.now() - t0), canvasFrames, note }) }
+  statsEl.textContent = s + (note ? '\n' + note : '')
+}, 1000)
+go(+(location.hash.slice(1)) || 0)
+</script></body></html>
