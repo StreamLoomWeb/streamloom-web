@@ -69,6 +69,47 @@ test.describe('failed play never hides a channel by itself', () => {
     await expect(page.getByRole('button', { name: `Play ${CHANNEL_NAME}`, exact: true }).first()).toBeVisible()
   })
 
+  test('coming back online resumes a stream that was waiting on the network, without a click', async ({ page, context }) => {
+    await openHome(page, context)
+
+    await page.evaluate(`import('/src/pages/Watch.tsx')`)
+    await context.setOffline(true)
+    await page.route(STREAM, (route) => route.abort('internetdisconnected'))
+    await page.route(/\/api\/proxy/, (route) => route.abort('internetdisconnected'))
+    await go(page, `/watch/${CHANNEL}`)
+    await waitForFailureScreen(page)
+    await expect(page.getByText(/connection appears to be down/i)).toBeVisible({ timeout: 10_000 })
+
+    let requestedAfterReconnect = false
+    await context.setOffline(false)
+    await page.unroute(STREAM)
+    await page.route(STREAM, (route) => {
+      requestedAfterReconnect = true
+      return route.fulfill({ status: 404, headers: ORIGIN_CORS, body: 'gone' })
+    })
+    await expect.poll(() => requestedAfterReconnect, { timeout: 15_000 }).toBe(true)
+  })
+
+  test('a valid playlist served as text/html is still played', async ({ page, context }) => {
+    await openHome(page, context)
+
+    let segmentRequested = false
+    await page.route(STREAM, (route) => {
+      const url = route.request().url()
+      if (url.includes('seg0')) {
+        segmentRequested = true
+        return route.fulfill({ status: 404, headers: ORIGIN_CORS, body: 'x' })
+      }
+      return route.fulfill({
+        status: 200,
+        headers: { ...ORIGIN_CORS, 'content-type': 'text/html' },
+        body: '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:4\n#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:4,\nhttps://streams.invalid/seg0.ts\n',
+      })
+    })
+    await go(page, `/watch/${CHANNEL}`)
+    await expect.poll(() => segmentRequested, { timeout: 15_000 }).toBe(true)
+  })
+
   test('a failed play while the connectivity probe fails records nothing', async ({ page, context }) => {
     await openHome(page, context)
 

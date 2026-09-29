@@ -36,6 +36,41 @@ interface Slot {
 
 let pending: Slot | null = null
 
+/** A playlist is small; a longer body is media, and reading it would never end on a live stream. */
+const MAX_PLAYLIST_BYTES = 512 * 1024
+
+/**
+ * The body as text when it is a playlist, otherwise null with the connection cancelled.
+ * A raw MPEG-TS or audio stream never ends, so `res.text()` would hold the origin's
+ * connection slot (panels often allow one per account) until the timeout.
+ */
+async function readPlaylistText(res: Response): Promise<string | null> {
+  const reader = res.body?.getReader()
+  if (!reader) return res.text()
+  const decoder = new TextDecoder()
+  let text = ''
+  let bytes = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      bytes += value.byteLength
+      text += decoder.decode(value, { stream: true })
+      if (bytes >= 16 && !text.replace(/^﻿/, '').trimStart().startsWith('#EXTM3U')) {
+        void reader.cancel()
+        return null
+      }
+      if (bytes > MAX_PLAYLIST_BYTES) {
+        void reader.cancel()
+        return null
+      }
+    }
+  } catch {
+    return null
+  }
+  return text
+}
+
 /** Fetches the playlist the player will ask for first. Call it as the channel is opened. */
 export function prefetchPlaylist(channel: EnrichedChannel) {
   // Media Source present means the player loads through hls.js; without it the URL goes
@@ -51,7 +86,8 @@ export function prefetchPlaylist(channel: EnrichedChannel) {
   const result = fetch(url, { credentials: 'omit', signal: controller.signal })
     .then(async (res) => {
       if (!res.ok || (res.headers.get('content-type') ?? '').includes('text/html')) return null
-      const text = await res.text()
+      const text = await readPlaylistText(res)
+      if (text === null) return null
       const age = Number(res.headers.get('age'))
       return { url: res.url || url, text, status: res.status, receivedAt: performance.now(), age: age > 0 ? age : 0 }
     })

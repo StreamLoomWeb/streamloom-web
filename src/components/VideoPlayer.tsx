@@ -71,12 +71,11 @@ export interface MediaTrackItem {
 const REBUFFER_GRACE_MS = 600
 /** How long the channel banner stays up after a switch. */
 const ZAP_BANNER_MS = 2500
-const START_IDLE_MS = 7000
-/**
- * Before the first frame: longest a slow but moving load may take. Just past hls.js's
- * own fragLoadingTimeOut (12 s, below), beyond which it restarts the fragment anyway.
- */
-const START_CAP_MS = 13000
+const START_IDLE_MS = 8000
+/** A proxied first byte also waits on the edge's own upstream fetch (up to 10 s). */
+const START_IDLE_PROXIED_MS = 12000
+/** Before the first frame: longest a slow but moving load may take. */
+const START_CAP_MS = 20000
 /** After playback: longest a stall may go without a media byte. */
 const STALL_IDLE_MS = 8000
 /** After playback: longest a stall may last while bytes trickle in. */
@@ -199,6 +198,11 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
   /** When the last media byte arrived; playlist refreshes do not count. */
   const lastMediaByteAt = useRef(0)
   const switchChannelCleanlyRef = useRef<(target: EnrichedChannel) => void>(() => {})
+  /** Set when a fatal error struck while the browser reported no connection. */
+  const waitingForNetworkRef = useRef(false)
+  const hasErrorRef = useRef(false)
+  /** Automatic retries spent on the current outage; reset by playback or a channel change. */
+  const autoRetryCount = useRef(0)
   const failoverToNextAttemptRef = useRef<(cause: FailureClass, errorClass?: ErrorClass) => void>(() => {})
   const failureEvidenceRef = useRef<FailureEvidence | null>(null)
 
@@ -287,10 +291,16 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
         .sort((a, b) => rankResolution(b.quality) - rankResolution(a.quality))[0]
 
       if (!bestVerified) return
-      cacheWorkingStream(channel.id, bestVerified.url, isProxiedRef.current, bestVerified.quality)
-
+      // A probe verdict is not playback: nothing is cached here. The upgrade applies only
+      // while the current attempt has shown no sign of life, never re-keying a load
+      // that is making progress or already playing.
       const matchIdx = channelStreamsRef.current.findIndex((s) => s.url === bestVerified.url)
-      if (matchIdx > 0 && activeStreamIdxRef.current === 0) {
+      if (
+        matchIdx > 0 &&
+        activeStreamIdxRef.current === 0 &&
+        !hasPlayedSuccessfully.current &&
+        performance.now() - lastMediaByteAt.current > 1500
+      ) {
         setActiveStreamIdx(matchIdx)
       }
     })
@@ -993,6 +1003,46 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
     setRetryNonce((n) => n + 1)
   }, [cancelCountdown])
 
+  // Recovery without a click: the connection coming back, or the tab returning to view,
+  // resumes a stream that was waiting on the network or had run out of candidates.
+  useEffect(() => {
+    const resume = () => {
+      if (waitingForNetworkRef.current || hasErrorRef.current) {
+        waitingForNetworkRef.current = false
+        handleRetry()
+      }
+    }
+    const onOnline = () => resume()
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && navigator.onLine) resume()
+    }
+    window.addEventListener('online', onOnline)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('online', onOnline)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [handleRetry])
+
+  // After every candidate failed, try the whole ladder again on a jittered backoff
+  // (streams often come back within a minute); a click or a channel change cancels it.
+  useEffect(() => {
+    hasErrorRef.current = hasError
+    if (!hasError) return
+    const delays = [5000, 15000, 45000]
+    const step = autoRetryCount.current
+    if (step >= delays.length) return
+    const timer = window.setTimeout(() => {
+      if (document.visibilityState !== 'visible' || !navigator.onLine) return
+      autoRetryCount.current = step + 1
+      handleRetry()
+    }, delays[step] * (0.8 + Math.random() * 0.4))
+    return () => window.clearTimeout(timer)
+  }, [hasError, channel.id, handleRetry])
+  useEffect(() => {
+    autoRetryCount.current = 0
+  }, [channel.id])
+
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
@@ -1010,6 +1060,8 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
     beginPlay(channel.id, rawUrl)
 
     let isDisposed = false
+    let networkRecoveryAttempts = 0
+    waitingForNetworkRef.current = false
 
     if (connectionTimeoutTimer.current) window.clearTimeout(connectionTimeoutTimer.current)
     if (failoverTimer.current) window.clearTimeout(failoverTimer.current)
@@ -1025,18 +1077,19 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
     // Failover watchdog: re-checks until media stops arriving or the cap is reached.
     const attemptStart = performance.now()
     lastMediaByteAt.current = attemptStart
+    const startIdleMs = isProxied ? START_IDLE_PROXIED_MS : START_IDLE_MS
     const checkStart = () => {
       if (isDisposed) return
       const now = performance.now()
       const idle = now - lastMediaByteAt.current
       const left = START_CAP_MS - (now - attemptStart)
-      if (idle < START_IDLE_MS && left > 0) {
-        failoverTimer.current = window.setTimeout(checkStart, Math.min(START_IDLE_MS - idle, left))
+      if (idle < startIdleMs && left > 0) {
+        failoverTimer.current = window.setTimeout(checkStart, Math.min(startIdleMs - idle, left))
         return
       }
       failoverToNextAttemptRef.current('inconclusive')
     }
-    failoverTimer.current = window.setTimeout(checkStart, START_IDLE_MS)
+    failoverTimer.current = window.setTimeout(checkStart, startIdleMs)
 
     const onPlaybackSuccess = () => {
       if (isDisposed) return
@@ -1053,31 +1106,27 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
         stallTimer.current = null
       }
       hasPlayedSuccessfully.current = true
+      autoRetryCount.current = 0
+      waitingForNetworkRef.current = false
       markFirstFrame()
       stallEnd()
       sessionStorage.removeItem('sl_autoskip_start')
       setIsBuffering(false)
       setIsSlowConnecting(false)
+      setNetworkIssue(false)
       setHasError(false)
       failureEvidenceRef.current = null
       unmarkStreamBroken(channel.id)
-      const playedStream = channelStreamsRef.current[activeStreamIdxRef.current]
-      cacheWorkingStream(channel.id, rawUrl, isProxied, playedStream?.quality)
+      // Not cached here: a buffered fragment may still fail to decode. The video
+      // element's `playing` event (first real frame) writes the cache.
     }
 
     // Determine target playback URL
     let targetUrl = rawUrl
     if (isProxied) {
-      const fallbackUrls = channelStreams
-        .filter((_, idx) => idx !== activeStreamIdx)
-        .map((s) => s.url)
-      targetUrl = getProxyStreamUrl(
-        rawUrl,
-        null,
-        null,
-        fallbackUrls,
-        channel.id
-      )
+      // No server-side fallback list: the player is the only failover authority, so the
+      // URL it caches and reports is always the one that played.
+      targetUrl = getProxyStreamUrl(rawUrl, null, null, [], channel.id)
     } else if (isMixedContent(rawUrl)) {
       targetUrl = tryUpgradeToHttps(rawUrl)
     }
@@ -1147,9 +1196,16 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
         manifestLoadingMaxRetry: 2,
         manifestLoadingRetryDelay: 500,
         levelLoadingTimeOut: 10000,
-        fragLoadingTimeOut: 12000,
-        fragLoadingMaxRetry: 2,
-        fragLoadingRetryDelay: 500,
+        // The legacy fragLoadingTimeOut would also cap the whole download at that value;
+        // a large segment on a slow link needs a generous total with a firm first-byte bound.
+        fragLoadPolicy: {
+          default: {
+            maxTimeToFirstByteMs: 10000,
+            maxLoadTimeMs: 60000,
+            timeoutRetry: { maxNumRetry: 2, retryDelayMs: 500, maxRetryDelayMs: 4000 },
+            errorRetry: { maxNumRetry: 2, retryDelayMs: 500, maxRetryDelayMs: 4000 },
+          },
+        },
         renderTextTracksNatively: true,
         enableCEA708Captions: true,
         xhrSetup: (xhr: XMLHttpRequest) => {
@@ -1160,24 +1216,6 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
           xhr.addEventListener('progress', () => {
             if (xhr.responseType === 'arraybuffer' && xhr.status >= 200 && xhr.status < 300) {
               lastMediaByteAt.current = performance.now()
-            }
-          })
-          xhr.addEventListener('readystatechange', () => {
-            // Guard against HTML payloads (e.g. SPA index.html returned by unconfigured proxy)
-            if (xhr.readyState === 4 && xhr.status === 200) {
-              const ct = (xhr.getResponseHeader('Content-Type') || '').toLowerCase()
-              if (ct.includes('text/html')) {
-                xhr.abort()
-              }
-              const resolvedStream = xhr.getResponseHeader('X-Stream-Resolved')
-              if (resolvedStream && resolvedStream !== rawUrl) {
-                const resolved = channelStreamsRef.current.find((s) => s.url === resolvedStream)
-                cacheWorkingStream(channel.id, resolvedStream, true, resolved?.quality)
-                const matchIdx = channelStreamsRef.current.findIndex((s) => s.url === resolvedStream)
-                if (matchIdx >= 0) {
-                  activeStreamIdxRef.current = matchIdx
-                }
-              }
             }
           })
         },
@@ -1288,14 +1326,41 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
           }
           switch (data.type) {
             case Hls.ErrorTypes.MEDIA_ERROR:
-              if (mediaRecoveryAttempts.current < 1) {
+              // Ladder: plain recovery, then swap the audio codec (the usual fix for an
+              // AAC/HE-AAC mismatch on a stream VLC plays), then the next attempt.
+              if (mediaRecoveryAttempts.current === 0) {
                 mediaRecoveryAttempts.current++
+                hls.recoverMediaError()
+              } else if (mediaRecoveryAttempts.current === 1) {
+                mediaRecoveryAttempts.current++
+                hls.swapAudioCodec()
                 hls.recoverMediaError()
               } else {
                 failoverToNextAttemptRef.current(classifyHlsError(data), errorClassOfHls(data))
               }
               break
             case Hls.ErrorTypes.NETWORK_ERROR:
+              // The user's own link is down: not the stream's fault. Hold, and let the
+              // `online` handler resume, rather than burning candidates.
+              if (!navigator.onLine) {
+                waitingForNetworkRef.current = true
+                setNetworkIssue(true)
+                setHasError(true)
+                setIsBuffering(false)
+                setIsSlowConnecting(false)
+                break
+              }
+              // A drop after playback started: reload the same stream before giving it up.
+              if (hasPlayedSuccessfully.current && networkRecoveryAttempts < 2) {
+                networkRecoveryAttempts++
+                hls.startLoad(-1)
+                if (!failoverTimer.current) {
+                  lastMediaByteAt.current = performance.now()
+                }
+                break
+              }
+              failoverToNextAttemptRef.current(classifyHlsError(data), errorClassOfHls(data))
+              break
             default:
               failoverToNextAttemptRef.current(classifyHlsError(data), errorClassOfHls(data))
               break
