@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import type { EnrichedChannel } from '../hooks/useChannels'
 import { useEpg } from '../hooks/useChannels'
 import { useVisible } from '../hooks/useVisible'
@@ -13,7 +13,14 @@ interface Props {
   /** Whether this channel has a published schedule at all — skips the fetch otherwise. */
   hasSchedule: boolean
   onPick: (channel: EnrichedChannel) => void
+  /** Fired once focus or hover has rested on this row for `DWELL_MS`. */
+  onDwell?: (channel: EnrichedChannel) => void
+  /** Focus or hover left this row. */
+  onDwellEnd?: () => void
 }
+
+/** How long a row must be rested on before its preview shows. */
+const DWELL_MS = 800
 
 /**
  * One row of the player's mini-guide (S3): logo, name, and now/next when a
@@ -21,7 +28,22 @@ interface Props {
  * row needs its own visibility gate and its own `useEpg` fetch — one schedule
  * read per channel the viewer actually scrolls to, not the whole playlist.
  */
-export const MiniGuideRow = memo(function MiniGuideRow({ channel, active, hasSchedule, onPick }: Props) {
+export const MiniGuideRow = memo(function MiniGuideRow({ channel, active, hasSchedule, onPick, onDwell, onDwellEnd }: Props) {
+  const dwellTimer = useRef<number | null>(null)
+  const startDwell = () => {
+    if (!onDwell || dwellTimer.current !== null) return
+    dwellTimer.current = window.setTimeout(() => {
+      dwellTimer.current = null
+      onDwell(channel)
+    }, DWELL_MS)
+  }
+  const endDwell = () => {
+    if (dwellTimer.current !== null) window.clearTimeout(dwellTimer.current)
+    dwellTimer.current = null
+    onDwellEnd?.()
+  }
+  useEffect(() => () => { if (dwellTimer.current !== null) window.clearTimeout(dwellTimer.current) }, [])
+
   const [ref, visible] = useVisible<HTMLButtonElement>()
   const { programs } = useEpg(hasSchedule && visible ? channel.id : null)
   // The drawer is short-lived and opened on demand, so "now" is captured once per
@@ -46,6 +68,10 @@ export const MiniGuideRow = memo(function MiniGuideRow({ channel, active, hasSch
       type="button"
       className={`player__drawer-item ${active ? 'player__drawer-item--active' : ''}`}
       onClick={() => onPick(channel)}
+      onFocus={startDwell}
+      onBlur={endDwell}
+      onMouseEnter={startDwell}
+      onMouseLeave={endDwell}
     >
       {logoSrc ? (
         <img

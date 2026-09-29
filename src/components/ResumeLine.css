@@ -1,0 +1,40 @@
+.resume-line {
+  display: flex;
+  align-items: stretch;
+  margin: 12px 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+.resume-line button {
+  color: var(--text-primary);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+}
+.resume-line button:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+.resume-line__go {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 16px;
+  text-align: left;
+}
+.resume-line__play {
+  color: var(--accent);
+}
+.resume-line__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.resume-line__x {
+  padding: 0 16px;
+  color: var(--text-secondary) !important;
+}

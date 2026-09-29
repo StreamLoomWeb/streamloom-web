@@ -1028,4 +1028,56 @@
 .player__overlay-btn:focus-visible {
   outline: 3px solid #fff;
   outline-offset: 3px;
+
+/* Flip preview: now/next card for the row a viewer has rested on in the drawer */
+.player__flip {
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.04);
+}
+.player__flip-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.player__flip-logo {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+}
+.player__flip-name {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.player__flip-now,
+.player__flip-next {
+  margin: 2px 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.player__flip-now {
+  color: var(--text-primary);
+}
+.player__flip-bar {
+  height: 3px;
+  margin: 6px 0;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+}
+.player__flip-bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+}
+.player__sleep-btn {
+  width: auto !important;
+  min-width: 40px;
+  padding: 0 12px;
+  font-size: 14px !important;
+  border-radius: var(--radius-full) !important;
 }

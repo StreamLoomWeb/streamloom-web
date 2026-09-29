@@ -208,6 +208,14 @@ effect on production until it is added in the dashboard as well, and adding
 - The client (`src/telemetry/`) is fire-and-forget: `sendBeacon` on `pagehide`, hidden `visibilitychange`, and every five minutes; at most 20 events / 2 KB per request; at most one `play_fail` per stream per session; `play_fail` only for `stream`-class failures (`streamFailure.ts`), never network or timeouts. The in-app opt-out (`sl_telemetry_optout`) is checked before `navigator.globalPrivacyControl`, and once set nothing is sent.
 - `e2e/telemetry-endpoint.spec.ts`, `e2e/stats-endpoint.spec.ts` and `e2e/telemetry-client.spec.ts` are the gate; `e2e/workerd-smoke.spec.ts` also runs `/api/t` under real workerd.
 
+### 7. Delight features (local-only, no identifier, no autoplay on Home)
+- **Surprise me**: nav button and `*` key (`SurpriseMe.tsx`, `util/surprise.ts`); weights come from `sl_cat_weights_v1` and the working-stream cache, never leave the device. In the player `*` zaps directly (`switchChannelCleanly`). FixerBot is reused unchanged; the spin is a CSS wrapper, still and short under reduced motion.
+- **Sleep timer** (`hooks/useSleepTimer.ts`, `Z` key / HUD button): 30/60/90 min, last minute dims and fades audio, ends on a calm "Good night" card; volume is always restored.
+- **Starting soon** (`StartingSoon.tsx`, `util/reminders.ts`, `ReminderHost.tsx`): favourites whose next programme starts within 45 min; at most 8 schedule reads; reminders are in-app toasts only (no Notification API/push).
+- **Flip preview**: 800 ms dwell on a drawer row shows now/next (`FlipPreview.tsx`); warms the origin via `util/preconnect.ts` only, no second video.
+- **Resume line** (`ResumeLine.tsx`, `sl_last_watch_v1`): cold start within 6 h, one dismissible line, never autoplays.
+- Telemetry for these is deliberately not added: any new event needs the backend contract updated first (port `telemetryContract.ts` + golden fixture in one commit).
+
 ### 3. Keyboard & Smart TV Navigation
 - Navigation uses a single stable listener pattern with `onKeyRef` in `VideoPlayer.tsx` to ensure zero dropped keypresses.
 - Keys:

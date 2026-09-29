@@ -1,0 +1,115 @@
+.soon-strip {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding: 4px 2px;
+  margin-bottom: 16px;
+}
+.soon-strip:empty {
+  display: none;
+}
+.soon-chip {
+  display: flex;
+  align-items: stretch;
+  flex: 0 0 auto;
+  max-width: min(360px, 88vw);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.soon-chip button {
+  color: var(--text-primary);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+}
+.soon-chip button:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+.soon-chip__main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  text-align: left;
+  min-width: 0;
+}
+.soon-chip__logo {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  flex: none;
+}
+.soon-chip__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.soon-chip__label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.soon-chip__title {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.soon-chip__channel {
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+.soon-chip__bell {
+  padding: 0 14px;
+  font-size: 18px;
+  border-left: 1px solid var(--border) !important;
+  min-width: 44px;
+}
+.soon-chip__bell--on {
+  background: var(--accent-glow) !important;
+}
+
+/* In-app reminder toast */
+.reminder-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(520px, 92vw);
+  padding: 12px 16px;
+  color: var(--text-primary);
+  background: var(--bg-card);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.reminder-toast__text {
+  font-size: 14px;
+  min-width: 0;
+}
+.reminder-toast button {
+  flex: none;
+  padding: 8px 14px;
+  font-weight: 700;
+  color: var(--text-on-accent);
+  cursor: pointer;
+  background: var(--accent-gradient);
+  border: 0;
+  border-radius: var(--radius-full);
+}
+.reminder-toast button.reminder-toast__dismiss {
+  color: var(--text-secondary);
+  background: transparent;
+}
+.reminder-toast button:focus-visible {
+  outline: 3px solid var(--text-primary);
+  outline-offset: 2px;
+}

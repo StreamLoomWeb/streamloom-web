@@ -51,3 +51,13 @@ export const MoonIcon = () => (
 export const RefreshIcon = () => (
   <Icon><path d="M20 11a8 8 0 0 0-14.5-4M4 4v4h4" /><path d="M4 13a8 8 0 0 0 14.5 4M20 20v-4h-4" /></Icon>
 )
+export const DiceIcon = () => (
+  <Icon>
+    <rect x="3.5" y="3.5" width="17" height="17" rx="3" />
+    <circle cx="8.5" cy="8.5" r="1" fill="currentColor" />
+    <circle cx="15.5" cy="8.5" r="1" fill="currentColor" />
+    <circle cx="12" cy="12" r="1" fill="currentColor" />
+    <circle cx="8.5" cy="15.5" r="1" fill="currentColor" />
+    <circle cx="15.5" cy="15.5" r="1" fill="currentColor" />
+  </Icon>
+)

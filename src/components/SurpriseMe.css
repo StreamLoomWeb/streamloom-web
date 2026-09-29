@@ -1,0 +1,34 @@
+.surprise {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(6, 7, 9, 0.88);
+}
+.surprise__bot {
+  width: min(220px, 50vw);
+  animation: surprise-spin 1.1s cubic-bezier(0.45, 0, 0.25, 1) both;
+}
+.surprise__caption {
+  color: var(--text-secondary);
+  font-size: 15px;
+}
+@keyframes surprise-spin {
+  from {
+    transform: rotate(-360deg) scale(0.6);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .surprise__bot {
+    animation: none;
+  }
+}
