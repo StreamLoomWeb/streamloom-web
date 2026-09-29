@@ -16,6 +16,9 @@ const TV_UA_PATTERN =
 
 function hasNoPointer(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
+  // A phone also reports no hover and no fine pointer, but it has a touchscreen;
+  // a TV remote browser does not.
+  if (window.navigator.maxTouchPoints > 0) return false
   return !window.matchMedia('(hover: hover)').matches && !window.matchMedia('(pointer: fine)').matches
 }
 

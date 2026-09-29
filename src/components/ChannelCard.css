@@ -58,6 +58,13 @@
   box-shadow: var(--shadow-card-hover), 0 0 0 3px var(--accent-glow);
 }
 
+/* Fallback for engines without :has() (older Tizen/webOS): the focused button
+   itself carries a visible ring, so focus is never invisible on a TV. */
+.channel-card__surface:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .channel-card:active { transform: scale(0.98); }
 
 .channel-card--no-stream {

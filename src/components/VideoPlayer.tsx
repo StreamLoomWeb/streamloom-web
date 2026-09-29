@@ -1487,7 +1487,13 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
         ) ?? []
       ).filter((el) => el.offsetParent !== null)
 
-    if (isHudVisible && isArrowKey) {
+    // Arrows drive the HUD only once focus is actually inside it, or on
+    // Left/Right (which reveal and enter it). The HUD also shows while merely
+    // buffering after a zap; Up/Down must keep zapping through that, or a
+    // second flip would move focus instead of changing channel.
+    const focusInHud = hudControls().includes(document.activeElement as HTMLElement)
+    const hudOwnsArrow = focusInHud || (isHudVisible && (e.key === 'ArrowLeft' || e.key === 'ArrowRight'))
+    if (isHudVisible && isArrowKey && hudOwnsArrow) {
       e.preventDefault()
       const controls = hudControls()
       if (controls.length) {
