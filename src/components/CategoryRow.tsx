@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect } from 'react'
+import { useRef, useState, useCallback, useEffect, useMemo } from 'react'
 import { ChannelCard } from './ChannelCard'
 import type { EnrichedChannel } from '../hooks/useChannels'
 import './CategoryRow.css'
@@ -50,6 +50,9 @@ export function CategoryRow({ title, channels, epgChannelIds, onWatch }: Props) 
     observer.observe(el)
     return () => observer.disconnect()
   }, [isRevealed])
+
+  // One stable array per channels identity, so memoised cards are not re-rendered by a fresh prop.
+  const playlist = useMemo(() => channels.map((c) => c.id), [channels])
 
   // Expand visible channels when needed
   const ensureMoreVisible = useCallback(() => {
@@ -132,7 +135,7 @@ export function CategoryRow({ title, channels, epgChannelIds, onWatch }: Props) 
                 channel={ch}
                 epgChannelIds={epgChannelIds}
                 onWatch={onWatch}
-                playlist={channels.map((c) => c.id)}
+                playlist={playlist}
               />
             ))
           : Array.from({ length: ghostCount }, (_, i) => (

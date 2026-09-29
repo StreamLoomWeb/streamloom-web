@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { memo, useCallback, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import type { EnrichedChannel } from '../hooks/useChannels'
 import { useFavourites } from '../hooks/useChannels'
@@ -24,7 +24,7 @@ interface Props {
   playlist?: string[]
 }
 
-export function ChannelCard({ channel, epgChannelIds, size = 'medium', onWatch, playlist }: Props) {
+function ChannelCardImpl({ channel, epgChannelIds, size = 'medium', onWatch, playlist }: Props) {
   const navigate = useNavigate()
   const location = useLocation()
   const { isFavourite, toggle } = useFavourites()
@@ -177,3 +177,5 @@ export function ChannelCard({ channel, epgChannelIds, size = 'medium', onWatch, 
     </article>
   )
 }
+
+export const ChannelCard = memo(ChannelCardImpl)
