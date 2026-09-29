@@ -116,7 +116,7 @@ export function HeroSection({ channels, recentIds }: Props) {
             className="hero__logo"
           />
         </div>
-        {featured.id === lastWatchedId && <p className="hero__eyebrow">Continue watching</p>}
+        {featured.id === lastWatchedId && <p className="hero__eyebrow">Jump back in</p>}
         <h1 className="hero__name">{featured.name}</h1>
         {countryDisplay && (
           <p className="hero__meta">

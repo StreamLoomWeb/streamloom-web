@@ -6,7 +6,7 @@ import type { EnrichedChannel } from '../hooks/useChannels'
 import { useEpg, useFavourites, useRecent } from '../hooks/useChannels'
 import { useOccasionAccessory } from '../api/occasion'
 import { FixerBotMascot } from './FixerBotMascot'
-import { getCurrentProgram, getNextProgram } from '../util/epgNow'
+import { getCurrentProgram, getNextProgram, programProgress } from '../util/epgNow'
 import { LOGO_SIZE, logoUrl, handleLogoError } from '../util/logo'
 import { markPlayerLogoForTransition } from '../util/viewTransition'
 import { orderStreamsForPlayback, rankResolution } from '../util/resolution'
@@ -61,6 +61,10 @@ export interface MediaTrackItem {
  * instead of being torn down and restarted from zero on another path.
  */
 /** Before the first frame: longest without a media byte before trying the next attempt. */
+/** Mid-play rebuffer shorter than this never shows the overlay. Watchdogs are unaffected. */
+const REBUFFER_GRACE_MS = 600
+/** How long the channel banner stays up after a switch. */
+const ZAP_BANNER_MS = 2500
 const START_IDLE_MS = 7000
 /**
  * Before the first frame: longest a slow but moving load may take. Just past hls.js's
@@ -97,6 +101,10 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isZoomed, setIsZoomed] = useState(false)
   const [isBuffering, setIsBuffering] = useState(true)
+  // Mid-play rebuffers only surface the overlay after REBUFFER_GRACE_MS, so a
+  // sub-second hiccup does not flash the mascot. The initial connect is never delayed.
+  const [rebufferGrace, setRebufferGrace] = useState(false)
+  const rebufferGraceTimer = useRef<number | null>(null)
   const [hasError, setHasError] = useState(false)
   const [networkIssue, setNetworkIssue] = useState(false)
   const [isSlowConnecting, setIsSlowConnecting] = useState(false)
@@ -126,7 +134,8 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const isHudVisible = showHud || isBuffering
+  const showConnectOverlay = isBuffering && !rebufferGrace
+  const isHudVisible = showHud || showConnectOverlay
 
   const resetHudTimer = useCallback(() => {
     setShowHud(true)
@@ -219,6 +228,7 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
     setHasError(false)
     setNetworkIssue(false)
     setIsBuffering(true)
+    setRebufferGrace(false)
     setIsSlowConnecting(false)
     setShowHud(true)
     setSubtitleTracks([])
@@ -1612,6 +1622,21 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
     ? (translateEpg && getTranslation(nextProgram.title)) || nextProgram.title
     : null
 
+  // Zap banner: shown for ZAP_BANNER_MS after every channel switch. Derived
+  // from "which channel has finished its banner" so no state is set
+  // synchronously in the effect; pointer-events are off, so it never takes
+  // focus or keys.
+  const [zapDoneFor, setZapDoneFor] = useState<string | null>(null)
+  useEffect(() => {
+    const id = window.setTimeout(() => setZapDoneFor(channel.id), ZAP_BANNER_MS)
+    return () => window.clearTimeout(id)
+  }, [channel.id])
+  useEffect(() => () => {
+    if (rebufferGraceTimer.current !== null) window.clearTimeout(rebufferGraceTimer.current)
+  }, [])
+  const showZapBanner = zapDoneFor !== channel.id
+  const nowProgress = nowPlaying ? programProgress(nowPlaying, currentTimestamp) : null
+
   // Mini-guide row order (S3): the playing channel first, then the rest of the
   // playlist in their existing order, wrapping around.
   const guideChannels = useMemo(() => {
@@ -1671,6 +1696,13 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
         onWaiting={(e) => {
           if (e.currentTarget.paused) return
           setIsBuffering(true)
+          if (hasPlayedSuccessfully.current && rebufferGraceTimer.current === null) {
+            setRebufferGrace(true)
+            rebufferGraceTimer.current = window.setTimeout(() => {
+              rebufferGraceTimer.current = null
+              setRebufferGrace(false)
+            }, REBUFFER_GRACE_MS)
+          }
           if (hasPlayedSuccessfully.current) stallStart()
           if (hasPlayedSuccessfully.current && !stallTimer.current) {
             const since = performance.now()
@@ -1710,6 +1742,11 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
             connectionTimeoutTimer.current = null
           }
           hasPlayedSuccessfully.current = true
+          if (rebufferGraceTimer.current !== null) {
+            window.clearTimeout(rebufferGraceTimer.current)
+            rebufferGraceTimer.current = null
+          }
+          setRebufferGrace(false)
           markFirstFrame()
           stallEnd()
           sessionStorage.removeItem('sl_autoskip_start')
@@ -1768,8 +1805,35 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
           pipWindow.document.body
         )}
 
+      {/* Zap banner */}
+      {showZapBanner && !hasError && (
+        <div className="player__zap" role="status" aria-live="polite" key={channel.id}>
+          {logoUrl(channel.logo) && (
+            <img
+              src={logoUrl(channel.logo)!}
+              alt=""
+              width={LOGO_SIZE}
+              height={LOGO_SIZE}
+              decoding="async"
+              onError={handleLogoError}
+              className="player__zap-logo"
+            />
+          )}
+          <div className="player__zap-text">
+            <p className="player__zap-name">{channel.name}</p>
+            {nowPlayingTitle && <p className="player__zap-now">{nowPlayingTitle}</p>}
+            {nextProgramTitle && <p className="player__zap-next">Next: {nextProgramTitle}</p>}
+            {nowProgress !== null && (
+              <div className="player__zap-progress" aria-hidden="true">
+                <div className="player__zap-progress-fill" style={{ width: `${nowProgress * 100}%` }} />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Buffering Indicator */}
-      {isBuffering && !hasError && (
+      {showConnectOverlay && !hasError && (
         <div className="player__state-overlay player__state-overlay--connecting">
           <FixerBotMascot accessory={occasionAccessory} />
           <div className="player__connecting-content">
@@ -1874,37 +1938,39 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
             )}
           </div>
           <div className="player__connecting-actions">
+            {nextChannel && (
+              <button
+                className="player__overlay-btn player__overlay-btn--primary"
+                onClick={goToNextChannel}
+                autoFocus
+              >
+                Next Channel ⏭
+              </button>
+            )}
             <button
-              className="player__overlay-btn player__overlay-btn--retry"
+              className={`player__overlay-btn ${nextChannel ? 'player__overlay-btn--secondary' : 'player__overlay-btn--primary'}`}
               onClick={handleRetry}
+              autoFocus={!nextChannel}
             >
               Retry ↺
             </button>
             {channelStreams.length > 1 && (
               <button
-                className="player__overlay-btn"
+                className="player__overlay-btn player__overlay-btn--secondary"
                 onClick={handleNextStreamCandidate}
               >
                 Alternate Stream ({activeStreamIdx + 1}/{channelStreams.length})
               </button>
             )}
             <button
-              className="player__overlay-btn"
+              className="player__overlay-btn player__overlay-btn--secondary"
               onClick={handleHideChannel}
               aria-label="Hide this channel"
             >
               Hide Channel 🚫
             </button>
-            {nextChannel && (
-              <button
-                className="player__overlay-btn player__overlay-btn--skip"
-                onClick={goToNextChannel}
-              >
-                Next Channel ⏭
-              </button>
-            )}
             <button
-              className="player__overlay-btn player__overlay-btn--back"
+              className="player__overlay-btn player__overlay-btn--secondary"
               onClick={() => {
                 cancelCountdown()
                 handleBack()

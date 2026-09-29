@@ -22,9 +22,11 @@ interface Props {
   size?: 'small' | 'medium' | 'large'
   onWatch?: (channelId: string) => void
   playlist?: string[]
+  /** Small secondary line, e.g. "watched 2h ago". */
+  note?: string
 }
 
-function ChannelCardImpl({ channel, epgChannelIds, size = 'medium', onWatch, playlist }: Props) {
+function ChannelCardImpl({ channel, epgChannelIds, size = 'medium', onWatch, playlist, note }: Props) {
   const navigate = useNavigate()
   const location = useLocation()
   const { isFavourite, toggle } = useFavourites()
@@ -162,6 +164,7 @@ function ChannelCardImpl({ channel, epgChannelIds, size = 'medium', onWatch, pla
           ) : fallbackDisplay ? (
             <p className="channel-card__country" title={fallbackDisplay}>{fallbackDisplay}</p>
           ) : null}
+          {note && <p className="channel-card__note">{note}</p>}
         </div>
       </button>
 

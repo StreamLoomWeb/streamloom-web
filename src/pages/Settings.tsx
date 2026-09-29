@@ -83,7 +83,7 @@ export function Settings() {
     setPendingConfirm(null)
     try {
       // The catalogue lives in IndexedDB now, so clear that too. Continue
-      // Watching (sl_recent_v1) is a separate, user-visible history — it has
+      // Watching (sl_recent_v2) is a separate, user-visible history — it has
       // its own button below and is never touched by this one.
       clearCatalogueCache()
       localStorage.removeItem('sl_catalogue_v5')
@@ -106,6 +106,7 @@ export function Settings() {
     setPendingConfirm(null)
     try {
       localStorage.removeItem('sl_recent_v1')
+      localStorage.removeItem('sl_recent_v2')
       setClearedRecentNotice(true)
       setTimeout(() => {
         setClearedRecentNotice(false)
@@ -270,7 +271,7 @@ export function Settings() {
               </div>
               {pendingConfirm === 'cache' ? (
                 <div className="settings-confirm" role="alertdialog" aria-label="Yes, clear cache">
-                  <span className="settings-confirm__text">Clear the cached catalogue and stream health? Favourites and history stay.</span>
+                  <span className="settings-confirm__text">Clear the cached catalogue and stream health? Favourites and Jump back in stay.</span>
                   <button className="settings-btn settings-btn--danger" onClick={handleClearCache} autoFocus>
                     Yes, clear cache
                   </button>
@@ -291,12 +292,12 @@ export function Settings() {
 
             <div className="settings-item">
               <div className="settings-item__info">
-                <strong>Continue Watching History</strong>
-                <span>Channels remembered for the Continue Watching row on Home</span>
+                <strong>Jump back in History</strong>
+                <span>Channels remembered for the Jump back in row on Home</span>
               </div>
               {pendingConfirm === 'recent' ? (
                 <div className="settings-confirm" role="alertdialog" aria-label="Yes, clear history">
-                  <span className="settings-confirm__text">Clear Continue Watching? This cannot be undone.</span>
+                  <span className="settings-confirm__text">Clear Jump back in history? This cannot be undone.</span>
                   <button className="settings-btn settings-btn--danger" onClick={handleClearRecent} autoFocus>
                     Yes, clear history
                   </button>

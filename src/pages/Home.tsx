@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useRef, useEffect, useDeferredValue } from 'react'
 import { useLocation } from 'react-router-dom'
-import { useChannels, useFavourites, useRecent } from '../hooks/useChannels'
+import { useChannels, useFavourites, useRecent, formatWatchedAgo } from '../hooks/useChannels'
 import type { EnrichedChannel } from '../hooks/useChannels'
 import { HeroSection } from '../components/HeroSection'
 import { CategoryRow } from '../components/CategoryRow'
@@ -59,7 +59,7 @@ export function Home() {
   // hide-broken setting (ADR-0033 §3). It is also what the search index is keyed on.
   const { channels, allChannels, categories, epgChannelIds, loading, error, refresh } = useChannels()
   const { favouriteIds } = useFavourites()
-  const { recentIds, addRecent } = useRecent()
+  const { recentIds, recentEntries, addRecent } = useRecent()
 
   // Initialize filters from sessionStorage so they are preserved upon returning from player
   const [search, setSearch] = useState(() => sessionStorage.getItem('sl_active_search') || '')
@@ -307,6 +307,17 @@ export function Home() {
         .filter(Boolean) as typeof playableChannels,
     [recentIds, playableChannels],
   )
+
+  const [mountedAt] = useState(() => Date.now())
+  const recentNotes = useMemo(() => {
+    const now = mountedAt
+    const m = new Map<string, string>()
+    for (const e of recentEntries) {
+      const note = formatWatchedAgo(e.t, now)
+      if (note) m.set(e.id, note)
+    }
+    return m
+  }, [recentEntries, mountedAt])
 
   const handleWatch = useCallback((channelId: string) => addRecent(channelId), [addRecent])
 
@@ -660,15 +671,15 @@ export function Home() {
               {/* Author's picks, favourites and recents stay visible under a
                   filter, narrowed to their matches, rather than disappearing
                   into the flat grid below. */}
-              <PicksRow channels={allChannels} onWatch={handleWatch} filter={filterMatches} epgChannelIds={epgChannelIds} />
+              {filteredRecentChannels.length > 0 && (
+                <CategoryRow title="▶ Jump back in" channels={filteredRecentChannels} onWatch={handleWatch} notes={recentNotes} epgChannelIds={epgChannelIds} />
+              )}
 
               {!showFavOnly && filteredFavouriteChannels.length > 0 && (
                 <CategoryRow title="♥ Favourites" channels={filteredFavouriteChannels} onWatch={handleWatch} epgChannelIds={epgChannelIds} />
               )}
 
-              {filteredRecentChannels.length > 0 && (
-                <CategoryRow title="▶ Continue Watching" channels={filteredRecentChannels} onWatch={handleWatch} epgChannelIds={epgChannelIds} />
-              )}
+              <PicksRow channels={allChannels} onWatch={handleWatch} filter={filterMatches} epgChannelIds={epgChannelIds} />
 
               <section className="home-search-results fade-up">
                 <div className="home-search-results__title-bar">
@@ -712,18 +723,18 @@ export function Home() {
           ) : (
             /* Normal row mode */
             <>
-              {/* Author's picks (ADR-0033): never filtered by a broken mark. */}
-              <PicksRow channels={allChannels} onWatch={handleWatch} epgChannelIds={epgChannelIds} />
+              {/* Recently watched */}
+              {recentChannels.length > 0 && (
+                <CategoryRow title="▶ Jump back in" channels={recentChannels} onWatch={handleWatch} notes={recentNotes} epgChannelIds={epgChannelIds} />
+              )}
 
               {/* Favourites row */}
               {favouriteChannels.length > 0 && (
                 <CategoryRow title="♥ Favourites" channels={favouriteChannels} onWatch={handleWatch} epgChannelIds={epgChannelIds} />
               )}
 
-              {/* Recently watched */}
-              {recentChannels.length > 0 && (
-                <CategoryRow title="▶ Continue Watching" channels={recentChannels} onWatch={handleWatch} epgChannelIds={epgChannelIds} />
-              )}
+              {/* Author's picks (ADR-0033): never filtered by a broken mark. */}
+              <PicksRow channels={allChannels} onWatch={handleWatch} epgChannelIds={epgChannelIds} />
 
               {/* Priority Category Rows */}
               {availableCategories.map((cat) => {
