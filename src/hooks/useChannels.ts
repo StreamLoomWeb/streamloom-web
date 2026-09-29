@@ -648,15 +648,38 @@ export function useFavourites() {
 }
 
 // ---- Recently Watched ----
-const RECENT_KEY = 'sl_recent_v1'
+// Local-only {id, t}: t is the epoch-ms of the last watch (0 = migrated from the
+// id-only v1 list, time unknown). Never sent anywhere.
+const RECENT_KEY = 'sl_recent_v2'
+const RECENT_KEY_V1 = 'sl_recent_v1'
 const RECENT_MAX = 20
 
-function readRecent(): string[] {
-  try { return JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]') }
-  catch { return [] }
+export interface RecentEntry { id: string; t: number }
+
+function readRecent(): RecentEntry[] {
+  try {
+    const raw = localStorage.getItem(RECENT_KEY)
+    if (raw) {
+      const parsed: unknown = JSON.parse(raw)
+      if (Array.isArray(parsed)) {
+        return parsed
+          .filter((e): e is RecentEntry => !!e && typeof e.id === 'string' && typeof e.t === 'number')
+          .slice(0, RECENT_MAX)
+      }
+    }
+    const old: unknown = JSON.parse(localStorage.getItem(RECENT_KEY_V1) ?? '[]')
+    if (!Array.isArray(old)) return []
+    const migrated = old
+      .filter((id): id is string => typeof id === 'string')
+      .slice(0, RECENT_MAX)
+      .map((id) => ({ id, t: 0 }))
+    if (migrated.length > 0) localStorage.setItem(RECENT_KEY, JSON.stringify(migrated))
+    return migrated
+  } catch { return [] }
 }
 
-let _recent: string[] = readRecent()
+let _recent: RecentEntry[] = readRecent()
+let _recentIds: string[] = _recent.map((e) => e.id)
 const _recentListeners = new Set<() => void>()
 function notifyRecent() { _recentListeners.forEach((fn) => fn()) }
 
@@ -669,10 +692,22 @@ export function useRecent() {
   }, [])
 
   const addRecent = useCallback((channelId: string) => {
-    _recent = [channelId, ..._recent.filter((id) => id !== channelId)].slice(0, RECENT_MAX)
-    localStorage.setItem(RECENT_KEY, JSON.stringify(_recent))
+    _recent = [{ id: channelId, t: Date.now() }, ..._recent.filter((e) => e.id !== channelId)].slice(0, RECENT_MAX)
+    _recentIds = _recent.map((e) => e.id)
+    try { localStorage.setItem(RECENT_KEY, JSON.stringify(_recent)) } catch { /* storage full or blocked */ }
     notifyRecent()
   }, [])
 
-  return { recentIds: _recent, addRecent }
+  return { recentIds: _recentIds, recentEntries: _recent, addRecent }
+}
+
+/** "watched 2h ago"; null when the time is unknown (migrated entry). */
+export function formatWatchedAgo(t: number, now = Date.now()): string | null {
+  if (!t) return null
+  const min = Math.max(0, Math.round((now - t) / 60_000))
+  if (min < 1) return 'watched just now'
+  if (min < 60) return `watched ${min}m ago`
+  const h = Math.round(min / 60)
+  if (h < 24) return `watched ${h}h ago`
+  return `watched ${Math.round(h / 24)}d ago`
 }

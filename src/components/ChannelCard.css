@@ -237,3 +237,18 @@
 
 .channel-card__fav:hover { transform: scale(1.2); }
 
+
+.channel-card__note {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* TV mode: a bigger focus lift, readable from a sofa. */
+html[data-tv-mode='true'] .channel-card:has(.channel-card__surface:focus-visible),
+html[data-tv-mode='true'] .channel-card.focused {
+  transform: translateY(-4px) scale(1.08);
+}

@@ -186,6 +186,13 @@ ul, ol { list-style: none; }
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
+/* TV browsers composite backdrop-filter on the CPU/GPU budget of a phone:
+   drop the blur and use a more opaque fill instead. */
+html[data-tv-mode='true'] .glass {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
 .gradient-text {
   background: var(--accent-gradient);
   -webkit-background-clip: text;
@@ -236,8 +243,8 @@ ul, ol { list-style: none; }
 
 /* ---------- Glow Pulse (for live indicator) ---------- */
 @keyframes glowPulse {
-  0%, 100% { opacity: 1; box-shadow: 0 0 6px #ef4444; }
-  50% { opacity: 0.5; box-shadow: 0 0 14px #ef4444; }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
 }
 
 .live-dot {
@@ -245,6 +252,7 @@ ul, ol { list-style: none; }
   width: 8px; height: 8px;
   border-radius: 50%;
   background: #ef4444;
+  box-shadow: 0 0 8px #ef4444;
   animation: glowPulse 1.6s ease-in-out infinite;
 }
 

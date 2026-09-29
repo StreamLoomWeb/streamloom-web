@@ -8,6 +8,8 @@ interface Props {
   channels: EnrichedChannel[]
   epgChannelIds?: Set<string>
   onWatch?: (channelId: string) => void
+  /** Optional per-channel secondary line keyed by channel id. */
+  notes?: Map<string, string>
 }
 
 const INITIAL_CHUNK = 24
@@ -16,7 +18,7 @@ const CHUNK_SIZE = 24
 /** How far ahead of the viewport a row starts mounting its cards. */
 const REVEAL_ROOT_MARGIN = '600px 0px'
 
-export function CategoryRow({ title, channels, epgChannelIds, onWatch }: Props) {
+export function CategoryRow({ title, channels, epgChannelIds, onWatch, notes }: Props) {
   const rowRef = useRef<HTMLDivElement>(null)
   const sectionRef = useRef<HTMLElement>(null)
   const [visibleCount, setVisibleCount] = useState(INITIAL_CHUNK)
@@ -132,6 +134,7 @@ export function CategoryRow({ title, channels, epgChannelIds, onWatch }: Props) 
                 channel={ch}
                 epgChannelIds={epgChannelIds}
                 onWatch={onWatch}
+                note={notes?.get(ch.id)}
                 playlist={channels.map((c) => c.id)}
               />
             ))
