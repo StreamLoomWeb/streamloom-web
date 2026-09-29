@@ -32,7 +32,9 @@ test.describe('TV guide on mobile', () => {
     const errors: string[] = []
     page.on('pageerror', (err) => errors.push('PAGEERROR: ' + err.message))
     page.on('console', (msg) => {
-      if (msg.type() === 'error') errors.push(msg.text())
+      // These specs read the real Redis and never install the R2 mock, so the index.html
+      // preload of the mock host is refused; that is the setup, not a page fault.
+      if (msg.type() === 'error' && !msg.location().url.startsWith('http://127.0.0.1:5198/')) errors.push(msg.text())
     })
 
     await openGuide(page)

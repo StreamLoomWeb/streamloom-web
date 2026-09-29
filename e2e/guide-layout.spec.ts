@@ -59,7 +59,9 @@ test.describe('TV guide', () => {
   test('renders the full grid without console errors', async ({ page }) => {
     const errors: string[] = []
     page.on('console', (msg) => {
-      if (msg.type() === 'error') errors.push(msg.text())
+      // These specs read the real Redis and never install the R2 mock, so the index.html
+      // preload of the mock host is refused; that is the setup, not a page fault.
+      if (msg.type() === 'error' && !msg.location().url.startsWith('http://127.0.0.1:5198/')) errors.push(msg.text())
     })
     page.on('pageerror', (err) => errors.push('PAGEERROR: ' + err.message))
 
@@ -270,14 +272,14 @@ test.describe('TV guide', () => {
 
   test('the translate toggle flips without breaking the grid', async ({ page }) => {
     await openGuide(page)
-    const original = page.getByRole('button', { name: 'Original' })
+    const original = page.getByRole('button', { name: 'Translate programme titles to English' })
     await expect(original).toBeVisible()
 
     await original.click()
-    const english = page.getByRole('button', { name: 'English' })
+    const english = page.getByRole('button', { name: 'Showing English titles' })
     await expect(english).toBeVisible()
     await english.click()
-    await expect(page.getByRole('button', { name: 'Original' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Translate programme titles to English' })).toBeVisible()
 
     // Grid still intact after toggling translation on and off.
     await expect(page.locator('.epg-guide__row').first()).toBeVisible()
