@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { Navbar } from './components/Navbar'
+import { ReminderHost } from './components/ReminderHost'
 import { Home } from './pages/Home'
 import { Guide } from './pages/Guide'
 import { Favorites } from './pages/Favorites'
@@ -92,6 +93,7 @@ export default function App() {
   useTelemetry()
   return (
     <BrowserRouter>
+      <ReminderHost />
       <Routes>
         {/* Watch page hides the navbar for an immersive full screen experience */}
         <Route

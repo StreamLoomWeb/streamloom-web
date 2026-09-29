@@ -10,7 +10,7 @@ let timer: ReturnType<typeof setInterval> | null = null
 const listeners = new Set<(now: number) => void>()
 
 /** The current time, re-read once a minute from a single shared timer. */
-function useMinuteClock(): number {
+export function useMinuteClock(): number {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     if (!timer) {

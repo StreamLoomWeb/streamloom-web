@@ -1,6 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useChannels, useFavourites } from '../hooks/useChannels'
 import { EpgGuide } from '../components/EpgGuide'
+import { StartingSoon } from '../components/StartingSoon'
 import type { GuideFilters, GuideFilterState } from '../util/epgFilter'
 import { EMPTY_FILTER_STATE } from '../util/epgFilter'
 import { computeMatchSet, normalizeSearch } from '../util/searchText'
@@ -89,6 +90,10 @@ export function Guide() {
 
   // Without a schedule index the guide falls back to every playable channel, so
   // the page stays a working channel browser instead of an empty grid.
+  const favouriteChannels = useMemo(
+    () => channels.filter((ch) => favouriteIds.has(ch.id)),
+    [channels, favouriteIds],
+  )
   const schedulesUnavailable = !loading && channels.length > 0 && !epgAvailable
 
   // Each visit to an unavailable guide gets a fresh, cheap attempt at recovery.
@@ -141,6 +146,8 @@ export function Guide() {
           <p>Loading channel guide…</p>
         </div>
       ) : (
+        <>
+        <StartingSoon channels={favouriteChannels} returnTo="/guide" />
         <EpgGuide
           channels={channels}
           categories={categories}
@@ -151,6 +158,7 @@ export function Guide() {
           schedulesUnavailable={schedulesUnavailable}
           onRetrySchedules={() => void refreshEpg()}
         />
+        </>
       )}
     </div>
   )

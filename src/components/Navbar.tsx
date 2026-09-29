@@ -1,7 +1,9 @@
+import { useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useChannels, useFavourites } from '../hooks/useChannels'
 import { useTheme } from '../hooks/useTheme'
 import { setTranslationEnabled, useTranslateEnabled } from '../util/translate'
+import { isSurpriseKey, useSurprise } from './SurpriseMe'
 import './Navbar.css'
 
 export function Navbar() {
@@ -10,9 +12,22 @@ export function Navbar() {
   const { isDark, toggleTheme } = useTheme()
   const translate = useTranslateEnabled()
   const favCount = favouriteIds.size
+  const { surprise, overlay } = useSurprise()
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (isSurpriseKey(e)) {
+        e.preventDefault()
+        surprise()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [surprise])
 
   return (
     <>
+      {overlay}
       {/* Top Navbar for all screens */}
       <nav className="navbar glass" role="navigation" aria-label="Main navigation">
         <NavLink to="/" className="navbar__brand">
@@ -36,6 +51,14 @@ export function Navbar() {
 
         <div className="navbar__actions">
           {loading && <span className="navbar__spinner" title="Loading catalogue…" />}
+          <button
+            className="navbar__icon-btn navbar__icon-btn--surprise"
+            onClick={surprise}
+            title="Surprise me (*)"
+            aria-label="Surprise me: play a random live channel"
+          >
+            🎲
+          </button>
           <button
             className={`navbar__icon-btn navbar__icon-btn--translate ${translate ? 'navbar__icon-btn--active' : ''}`}
             onClick={() => setTranslationEnabled(!translate)}

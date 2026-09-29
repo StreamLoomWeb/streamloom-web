@@ -3,6 +3,8 @@ import { useLocation } from 'react-router-dom'
 import { useChannels, useFavourites, useRecent, formatWatchedAgo } from '../hooks/useChannels'
 import type { EnrichedChannel } from '../hooks/useChannels'
 import { HeroSection } from '../components/HeroSection'
+import { ResumeLine } from '../components/ResumeLine'
+import { StartingSoon } from '../components/StartingSoon'
 import { CategoryRow } from '../components/CategoryRow'
 import { PicksRow } from '../components/PicksRow'
 import { SearchBar } from '../components/SearchBar'
@@ -508,7 +510,9 @@ export function Home() {
       ) : (
         <>
           {/* Hero — only shown when no filters active */}
+          {!hasActiveFilter && <ResumeLine channels={playableChannels} />}
           {!hasActiveFilter && <HeroSection channels={playableChannels} />}
+          {!hasActiveFilter && <StartingSoon channels={favouriteChannels} returnTo="/" />}
 
           {/* Filter / search toolbar */}
           <div className="home-toolbar">

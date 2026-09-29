@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import Hls, { type PlaylistLoaderConstructor } from 'hls.js'
 import type { EnrichedChannel } from '../hooks/useChannels'
-import { useEpg, useFavourites, useRecent } from '../hooks/useChannels'
+import { useChannels, useEpg, useFavourites, useRecent } from '../hooks/useChannels'
 import { useOccasionAccessory } from '../api/occasion'
 import { FixerBotMascot } from './FixerBotMascot'
 import { getCurrentProgram, getNextProgram, programProgress } from '../util/epgNow'
@@ -35,6 +35,12 @@ import { preconnectChannel } from '../util/preconnect'
 import { HandoffLoader } from '../util/handoffLoader'
 import { MANIFEST_TIMEOUT_MS } from '../util/playlistPrefetch'
 import { MiniGuideRow } from './MiniGuideRow'
+import { FlipPreview } from './FlipPreview'
+import { SleepOverlay } from './SleepTimer'
+import { useSleepTimer } from '../hooks/useSleepTimer'
+import { isSurpriseKey } from './SurpriseMe'
+import { pickSurprise } from '../util/surprise'
+import { recordWatch } from '../util/watchHistory'
 import { useDocumentPip } from '../hooks/useDocumentPip'
 import { getTranslation, requestTranslations, useTranslateEnabled } from '../util/translate'
 import './VideoPlayer.css'
@@ -1356,6 +1362,31 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
     }
   }, [channel.id, activeStreamIdx, isProxied, retryNonce, channelStreams, channel.stream, addRecent, destroyHls])
 
+  const sleep = useSleepTimer(videoRef)
+  const cycleSleep = sleep.cycle
+  useEffect(() => {
+    recordWatch(channelRef.current)
+  }, [channel.id])
+  const { allChannels: catalogue } = useChannels()
+  const [flipChannel, setFlipChannel] = useState<EnrichedChannel | null>(null)
+
+  const handleFlipDwell = useCallback((c: EnrichedChannel) => {
+    preconnectChannel(c)
+    setFlipChannel(c)
+  }, [])
+  const handleFlipEnd = useCallback(() => setFlipChannel(null), [])
+  useEffect(() => {
+    if (!showChannelList) queueMicrotask(() => setFlipChannel(null))
+  }, [showChannelList])
+
+  // "Surprise me" from the remote/keyboard: no extra overlay, the connecting state is the transition.
+  const surpriseChannel = useCallback(() => {
+    const pick = pickSurprise(catalogue?.length ? catalogue : allChannelsRef.current, channelRef.current.id)
+    if (!pick) return
+    targetChannelIdRef.current = pick.id
+    switchChannelCleanly(pick)
+  }, [catalogue, switchChannelCleanly])
+
   // Keybindings: attached once with stable ref to guarantee zero dropped key events
   const onKeyRef = useRef<(e: KeyboardEvent) => void>(() => {})
 
@@ -1468,8 +1499,16 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
     } else if (e.key === 'g' || e.key === 'G') {
       e.preventDefault()
       setShowChannelList((v) => !v)
+    } else if (isSurpriseKey(e)) {
+      e.preventDefault()
+      surpriseChannel()
+    } else if (e.key === 'z' || e.key === 'Z') {
+      e.preventDefault()
+      cycleSleep()
     }
   }, [
+    surpriseChannel,
+    cycleSleep,
     showChannelList,
     showSubtitleMenu,
     showAudioMenu,
@@ -1925,6 +1964,14 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
             ☰
           </button>
           <button
+            className={`player__fav-btn player__sleep-btn ${sleep.phase === 'running' ? 'player__fav-btn--active' : ''}`}
+            onClick={sleep.cycle}
+            aria-label={sleep.phase === 'running' ? `Sleep timer: ${sleep.minutesLeft} minutes left. Activate to change` : 'Sleep timer'}
+            title="Sleep timer: 30 / 60 / 90 min (Z)"
+          >
+            🌙{sleep.phase === 'running' ? ` ${sleep.minutesLeft}m` : ''}
+          </button>
+          <button
             className={`player__fav-btn ${fav ? 'player__fav-btn--active' : ''}`}
             onClick={() => toggle(channel.id)}
             aria-label={fav ? 'Remove from favourites' : 'Add to favourites'}
@@ -2167,6 +2214,8 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
         </div>
       </div>
 
+      <SleepOverlay timer={sleep} onExit={handleBack} />
+
       {/* Mini-guide (S3): logo, name, now/next per row, starting at the playing channel */}
       {showChannelList && (
         <div className="player__drawer glass">
@@ -2182,9 +2231,12 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
                 active={c.id === channel.id}
                 hasSchedule={epgChannelIds?.has(c.id) ?? false}
                 onPick={handleGuidePick}
+                onDwell={handleFlipDwell}
+                onDwellEnd={handleFlipEnd}
               />
             ))}
           </div>
+          {flipChannel && flipChannel.id !== channel.id && <FlipPreview key={flipChannel.id} channel={flipChannel} />}
         </div>
       )}
 
