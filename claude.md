@@ -133,7 +133,7 @@ effect on production until it is added in the dashboard as well, and adding
 
 ### 2c. Broken-Stream Marks (the hide/skip rule)
 - **Rule**: a channel is hidden or skipped only when the user explicitly turns that setting on (`sl_hide_broken`, `sl_auto_skip`; both default off), and a failure caused by the user's own network must never change what is shown.
-- `VideoPlayer.tsx` classifies every failed attempt (`src/util/streamFailure.ts`): `stream` (origin 4xx/5xx except 408/425/429, manifest/level/frag parse, codec, native decode/unsupported), `network` (no response), `inconclusive` (timeouts, the watchdogs, aborts, unknown).
+- `VideoPlayer.tsx` classifies every failed attempt (`src/util/streamFailure.ts`): `stream` (origin 4xx/5xx except 408/425/429 and the proxy's own 523, manifest/level/frag parse, codec, native decode/unsupported), `network` (no response), `inconclusive` (timeouts, the watchdogs, aborts, unknown).
 - On exhaustion, `recordStreamFailure()` calls `markStreamBroken` only when `navigator.onLine`, a same-origin probe (`/favicon.svg?probe=`) succeeds, and **every** candidate's last attempt was `stream`. Auto-skip also requires the probe to pass.
 - Never call `markStreamBroken` from a player error path directly. Marks written before this rule are purged once (`sl_broken_reset_v1`).
 - Hangs are never marked, so the user can hide a channel themselves (player HUD 🚫, slow-connecting and error overlays). `sl_hidden_channels_v1` holds their choice: no TTL, applies regardless of hide-broken, untouched by the mark purge and cache reset, undone per channel or all at once in Settings → Hidden Channels. It filters `channels` in `useChannels` and the playlists in `Watch.tsx`.

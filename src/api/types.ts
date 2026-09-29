@@ -23,6 +23,9 @@ export interface Stream {
   url: string
   quality: string | null
   status: string | null
+  /** Per-stream request identity some origins insist on; absent on most rows. */
+  user_agent?: string | null
+  referrer?: string | null
 }
 
 export interface Category {

@@ -150,7 +150,20 @@ const isProgram = (row: unknown): boolean =>
   typeof row.end_time === 'string'
 
 export const decodeChannels = (value: unknown): Channel[] | null => rows<Channel>(value, isChannel)
-export const decodeStreams = (value: unknown): Stream[] | null => rows<Stream>(value, isStream)
+/** Longest per-stream `user_agent` / `referrer` kept; anything else is dropped, never trusted. */
+const MAX_HEADER_HINT = 300
+const cleanHint = (v: unknown): string | null =>
+  typeof v === 'string' && v.length > 0 && v.length <= MAX_HEADER_HINT && !/[\r\n]/.test(v) ? v : null
+
+export const decodeStreams = (value: unknown): Stream[] | null => {
+  const decoded = rows<Stream>(value, isStream)
+  if (!decoded) return null
+  // Rows without the optional fields pass through untouched (same object).
+  return decoded.map((row) => {
+    if (!('user_agent' in row) && !('referrer' in row)) return row
+    return { ...row, user_agent: cleanHint(row.user_agent), referrer: cleanHint(row.referrer) }
+  })
+}
 export const decodeCategories = (value: unknown): Category[] | null => rows<Category>(value, isCategory)
 export const decodeEpg = (value: unknown): EpgProgram[] | null => rows<EpgProgram>(value, isProgram)
 export const decodeEpgIds = (value: unknown): string[] | null =>

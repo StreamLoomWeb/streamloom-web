@@ -1150,7 +1150,7 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
     if (isProxied) {
       // No server-side fallback list: the player is the only failover authority, so the
       // URL it caches and reports is always the one that played.
-      targetUrl = getProxyStreamUrl(rawUrl, null, null, [], channel.id)
+      targetUrl = getProxyStreamUrl(rawUrl, stream?.user_agent, stream?.referrer, [], channel.id)
     } else if (isMixedContent(rawUrl)) {
       targetUrl = tryUpgradeToHttps(rawUrl)
     }

@@ -52,8 +52,12 @@ const LOAD_ERROR_DETAILS = new Set([
   'keyLoadError',
 ])
 
-/** Statuses that describe the request or the caller, not the stream. */
-const TRANSIENT_STATUSES = new Set([408, 425, 429])
+/**
+ * Statuses that describe the request or the caller, not the stream. 523 is /api/proxy's own
+ * "no upstream response" (timeout, unreachable or refused before connecting, X-Proxy-Error):
+ * the edge never heard from the origin, so it is no verdict on the stream.
+ */
+const TRANSIENT_STATUSES = new Set([408, 425, 429, 523])
 
 /** Classifies an HTTP status returned for a stream request. */
 export function classifyHttpStatus(status: number | undefined): FailureClass {

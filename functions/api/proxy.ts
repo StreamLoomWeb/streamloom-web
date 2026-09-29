@@ -9,6 +9,7 @@
  * - Content-length and content-encoding stripping to prevent body truncation.
  */
 
+import { fetchUpstream as fetchUpstreamHop } from './_lib/rawHttp'
 import { PEEK_BYTES, concatBytes, isPlaylistBytes, looksLikeHtml, peekBody, sniffKind } from './_lib/sniff'
 
 /** A VLC-like identity: many IPTV origins allow it and refuse browser UAs. */
@@ -172,7 +173,9 @@ export const onRequest: PagesFunction = async (context) => {
       let effUa = customUa
       let effRef = customRef
 
-      const fetchUpstream = (ua: string, ref: string) => {
+      let finalUrl = parsedTarget.toString()
+      let via = 'fetch'
+      const fetchUpstream = async (ua: string, ref: string) => {
         const headers = new Headers()
         headers.set('User-Agent', ua)
         if (isVlcUa(ua) && !ref) {
@@ -181,12 +184,12 @@ export const onRequest: PagesFunction = async (context) => {
           headers.set('Referer', ref || parsedTarget.origin)
         }
         if (range) headers.set('Range', range)
-        return fetch(parsedTarget.toString(), {
-          method: request.method,
-          headers,
-          redirect: 'follow',
-          signal: controller.signal,
-        })
+        // Redirects are followed by hand so each hop can choose a raw socket (plain-http
+        // IP / non-standard-port origins that Workers fetch() refuses) or fetch().
+        const r = await fetchUpstreamHop(parsedTarget, { method: request.method, headers, signal: controller.signal })
+        finalUrl = r.finalUrl
+        via = r.via
+        return r.response
       }
 
       let upstreamResponse = await fetchUpstream(effUa, effRef)
@@ -257,6 +260,8 @@ export const onRequest: PagesFunction = async (context) => {
       responseHeaders.set('Access-Control-Expose-Headers', '*')
       responseHeaders.set('X-Stream-Resolved', candidate)
       responseHeaders.set('X-Edge-POP', cfColo)
+      // socket = raw TCP (plain-http IP / non-standard port), fetch = Workers fetch(). Diagnostic.
+      responseHeaders.set('X-Upstream-Via', via)
       responseHeaders.delete('X-Frame-Options')
       responseHeaders.delete('Content-Security-Policy')
       // The upstream is whatever the caller named, and this response is served
@@ -296,11 +301,7 @@ export const onRequest: PagesFunction = async (context) => {
         }
         const originalText = new TextDecoder().decode(all).replace(/^﻿/, '')
 
-        let baseStr = upstreamResponse.url
-        if (!baseStr || baseStr === 'about:blank') {
-          baseStr = parsedTarget.toString()
-        }
-        const baseUrl = new URL(baseStr)
+        const baseUrl = new URL(finalUrl)
         const proxyBase = `${urlObj.origin}${urlObj.pathname}`
 
         const buildChildUrl = (raw: string) => {
