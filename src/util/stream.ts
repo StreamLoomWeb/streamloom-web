@@ -381,7 +381,8 @@ export async function fetchEdgeVerifiedStreams(
     const timer = setTimeout(() => controller.abort(), timeoutMs)
     const params = new URLSearchParams()
     params.set('channelId', channelId)
-    params.set('urls', candidateUrls.join(','))
+    // Repeated `url` params: stream URLs can contain commas.
+    for (const u of candidateUrls) params.append('url', u)
     if (qualities && qualities.length > 0) {
       params.set(
         'qualities',

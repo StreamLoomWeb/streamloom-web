@@ -9,6 +9,16 @@
  * - Content-length and content-encoding stripping to prevent body truncation.
  */
 
+import { PEEK_BYTES, concatBytes, isPlaylistBytes, looksLikeHtml, peekBody, sniffKind } from './_lib/sniff'
+
+/** A VLC-like identity: many IPTV origins allow it and refuse browser UAs. */
+const VLC_UA = 'VLC/3.0.20 LibVLC/3.0.20'
+const isVlcUa = (ua: string) => /^VLC\//i.test(ua)
+/** A playlist larger than this is not a playlist worth rewriting in memory. */
+const MAX_PLAYLIST_BYTES = 4 * 1024 * 1024
+/** `URI="x"`, `URI='x'` or `URI=x` (unquoted, ends at a comma or whitespace). */
+const URI_ATTR = /URI=(?:"([^"]*)"|'([^']*)'|([^,\s"']+))/g
+
 function updateEdgeCacheWorkingStream(channelId: string, workingUrl: string, colo: string, context: any) {
   if (!channelId || channelId === 'unknown') return
   const cacheKey = `https://streamloom.internal/edge-streams/${encodeURIComponent(channelId)}`
@@ -122,10 +132,15 @@ export const onRequest: PagesFunction = async (context) => {
     }
   }
 
-  const customUa = urlObj.searchParams.get('ua') || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+  const defaultUa = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+  const customUa = urlObj.searchParams.get('ua') || defaultUa
   const customRef = urlObj.searchParams.get('ref') || ''
+  const sniff = urlObj.searchParams.get('sniff') === '1'
+  const range = sniff ? null : request.headers.get('Range')
 
   let lastError: string | null = null
+  let lastHttpStatus = 0
+  let lastFetchFailure: 'unreachable' | 'timeout' | 'blocked' | null = null
 
   // Fallback loop over candidates
   for (let i = 0; i < candidateUrls.length; i++) {
@@ -141,42 +156,93 @@ export const onRequest: PagesFunction = async (context) => {
       continue
     }
 
-    const headers = new Headers()
-    headers.set('User-Agent', customUa)
-    headers.set('Referer', customRef || parsedTarget.origin)
-    const range = request.headers.get('Range')
-    if (range) {
-      headers.set('Range', range)
-    }
+    const controller = new AbortController()
+    const timeoutMs = candidateUrls.length > 1 ? 5000 : 10000
+    // Stays armed until the first bytes (the peek) have arrived, so a server
+    // that sends headers and then nothing cannot hold the request open.
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      controller.abort()
+    }, timeoutMs)
 
     try {
-      const controller = new AbortController()
-      const timeoutMs = candidateUrls.length > 1 ? 5000 : 10000
-      const timer = setTimeout(() => controller.abort(), timeoutMs)
+      // The effective identity for this candidate. A 401/403 retry switches to
+      // a VLC-like UA with no referer, and child URLs inherit that choice.
+      let effUa = customUa
+      let effRef = customRef
 
-      const upstreamResponse = await fetch(parsedTarget.toString(), {
-        method: request.method,
-        headers,
-        redirect: 'follow',
-        signal: controller.signal,
-      })
-      clearTimeout(timer)
+      const fetchUpstream = (ua: string, ref: string) => {
+        const headers = new Headers()
+        headers.set('User-Agent', ua)
+        if (isVlcUa(ua) && !ref) {
+          // VLC never sends a Referer.
+        } else {
+          headers.set('Referer', ref || parsedTarget.origin)
+        }
+        if (range) headers.set('Range', range)
+        return fetch(parsedTarget.toString(), {
+          method: request.method,
+          headers,
+          redirect: 'follow',
+          signal: controller.signal,
+        })
+      }
+
+      let upstreamResponse = await fetchUpstream(effUa, effRef)
+      if ((upstreamResponse.status === 401 || upstreamResponse.status === 403) && !isVlcUa(effUa)) {
+        try {
+          await upstreamResponse.body?.cancel()
+        } catch {}
+        effUa = VLC_UA
+        effRef = ''
+        upstreamResponse = await fetchUpstream(effUa, effRef)
+      }
 
       const contentType = (upstreamResponse.headers.get('content-type') || '').toLowerCase()
 
-      // If upstream responded with HTML (error page, challenge, or paywall), reject
-      if (contentType.includes('text/html')) {
-        const htmlSnippet = await upstreamResponse.text()
-        const isActuallyHtml = htmlSnippet.trimStart().toLowerCase().startsWith('<!doctype') || htmlSnippet.trimStart().toLowerCase().startsWith('<html')
-        if (isActuallyHtml) {
-          lastError = `Candidate ${candidate} returned HTML error page`
-          continue
-        }
+      if (!upstreamResponse.ok && upstreamResponse.status !== 206) {
+        lastHttpStatus = upstreamResponse.status
+        lastError = `Candidate ${candidate} returned HTTP ${upstreamResponse.status}`
+        try {
+          await upstreamResponse.body?.cancel()
+        } catch {}
+        continue
       }
 
-      if (!upstreamResponse.ok && upstreamResponse.status !== 206) {
-        lastError = `Candidate ${candidate} returned HTTP ${upstreamResponse.status}`
+      // Peek the first bytes; never buffer an unbounded body.
+      const reader = upstreamResponse.body ? upstreamResponse.body.getReader() : null
+      let peeked: Uint8Array = new Uint8Array(0)
+      let bodyDone = reader === null
+      if (reader) {
+        const peek = await peekBody(reader, PEEK_BYTES)
+        peeked = peek.bytes
+        bodyDone = peek.done
+      }
+      clearTimeout(timer)
+
+      // If upstream responded with HTML (error page, challenge, or paywall), reject
+      if (contentType.includes('text/html') && looksLikeHtml(peeked)) {
+        lastError = `Candidate ${candidate} returned HTML error page`
+        try {
+          await reader?.cancel()
+        } catch {}
         continue
+      }
+
+      if (sniff) {
+        try {
+          await reader?.cancel()
+        } catch {}
+        return new Response(JSON.stringify({ kind: sniffKind(peeked), contentType }), {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Cache-Control': 'no-store',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Expose-Headers': '*',
+          },
+        })
       }
 
       // Success! Update edge cache if channelId is known
@@ -203,102 +269,145 @@ export const onRequest: PagesFunction = async (context) => {
       responseHeaders.set('Content-Security-Policy', 'sandbox')
       responseHeaders.delete('Set-Cookie')
 
-      // Inspect text if content type indicates text/m3u8 or if filename indicates m3u8
-      const likelyM3U8 =
-        contentType.includes('mpegurl') ||
-        contentType.includes('application/x-mpegurl') ||
-        contentType.includes('application/vnd.apple.mpegurl') ||
-        parsedTarget.pathname.toLowerCase().endsWith('.m3u8') ||
-        candidate.toLowerCase().includes('.m3u8')
-
-      if (likelyM3U8 || contentType.includes('text/') || contentType === '') {
-        const originalText = await upstreamResponse.text()
-        const trimmed = originalText.trimStart()
-
-        // Confirm M3U8 via magic header
-        if (trimmed.startsWith('#EXTM3U')) {
-          let baseStr = upstreamResponse.url
-          if (!baseStr || baseStr === 'about:blank') {
-            baseStr = parsedTarget.toString()
-          }
-          const baseUrl = new URL(baseStr)
-          const proxyBase = `${urlObj.origin}${urlObj.pathname}`
-
-          const buildChildUrl = (raw: string) => {
-            try {
-              const absolute = new URL(raw, baseUrl).toString()
-              const p = new URLSearchParams()
-              p.set('url', absolute)
-              if (customUa) p.set('ua', customUa)
-              if (customRef) p.set('ref', customRef)
-              return `${proxyBase}?${p.toString()}`
-            } catch {
-              return raw
-            }
-          }
-
-          const rewrittenText = originalText
-            .split(/\r?\n/)
-            .map((line) => {
-              const lineTrimmed = line.trim()
-              if (!lineTrimmed) return line
-              if (lineTrimmed.startsWith('#')) {
-                // Rewrite URIs in tags like #EXT-X-KEY:...,URI="..." or #EXT-X-MAP:URI="..."
-                if (lineTrimmed.includes('URI="')) {
-                  return lineTrimmed.replace(/URI="([^"]+)"/g, (_, uri) => {
-                    return `URI="${buildChildUrl(uri)}"`
-                  })
-                }
-                return line
+      // Decide by content, not label: only a body that starts with #EXTM3U
+      // (after an optional BOM) is a playlist, whatever its Content-Type says.
+      if (isPlaylistBytes(peeked)) {
+        let all = peeked
+        if (!bodyDone && reader) {
+          const rest = setTimeout(() => controller.abort(), timeoutMs)
+          try {
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) break
+              if (value) all = concatBytes(all, value)
+              if (all.length > MAX_PLAYLIST_BYTES) {
+                try {
+                  await reader.cancel()
+                } catch {}
+                lastError = `Candidate ${candidate} playlist too large`
+                all = new Uint8Array(0)
+                break
               }
-              // Non-comment line in M3U8 is a playlist or segment URI
-              return buildChildUrl(lineTrimmed)
-            })
-            .join('\n')
+            }
+          } finally {
+            clearTimeout(rest)
+          }
+          if (all.length === 0) continue
+        }
+        const originalText = new TextDecoder().decode(all).replace(/^﻿/, '')
 
-          responseHeaders.set('Content-Type', 'application/vnd.apple.mpegurl; charset=utf-8')
-          responseHeaders.delete('content-length')
-          responseHeaders.delete('Content-Length')
-          responseHeaders.delete('content-encoding')
-          responseHeaders.delete('Content-Encoding')
-          return new Response(rewrittenText, {
-            status: upstreamResponse.status,
-            headers: responseHeaders,
-          })
+        let baseStr = upstreamResponse.url
+        if (!baseStr || baseStr === 'about:blank') {
+          baseStr = parsedTarget.toString()
+        }
+        const baseUrl = new URL(baseStr)
+        const proxyBase = `${urlObj.origin}${urlObj.pathname}`
+
+        const buildChildUrl = (raw: string) => {
+          try {
+            const absolute = new URL(raw, baseUrl).toString()
+            const p = new URLSearchParams()
+            p.set('url', absolute)
+            if (effUa) p.set('ua', effUa)
+            if (effRef) p.set('ref', effRef)
+            return `${proxyBase}?${p.toString()}`
+          } catch {
+            return raw
+          }
         }
 
-        // If text response but not EXTM3U and not video, return as-is
+        const rewrittenText = originalText
+          .split(/\r?\n/)
+          .map((line) => {
+            const lineTrimmed = line.trim()
+            if (!lineTrimmed) return line
+            if (lineTrimmed.startsWith('#')) {
+              // Rewrite URIs in tags like #EXT-X-KEY:...,URI="..." or #EXT-X-MAP:URI='...'
+              return lineTrimmed.replace(URI_ATTR, (_, dq, sq, bare) => `URI="${buildChildUrl(dq ?? sq ?? bare)}"`)
+            }
+            // Non-comment line in M3U8 is a playlist or segment URI
+            return buildChildUrl(lineTrimmed)
+          })
+          .join('\n')
+
+        responseHeaders.set('Content-Type', 'application/vnd.apple.mpegurl; charset=utf-8')
+        responseHeaders.set('Cache-Control', 'no-store')
         responseHeaders.delete('content-length')
-        responseHeaders.delete('Content-Length')
-        return new Response(originalText, {
+        responseHeaders.delete('content-encoding')
+        responseHeaders.delete('Content-Range')
+        return new Response(request.method === 'HEAD' ? null : rewrittenText, {
           status: upstreamResponse.status,
           headers: responseHeaders,
         })
       }
 
-      // Binary media segment (.ts, .m4s, .mp4)
+      // Anything else (segments, TS, MP4, text): stream through, peeked bytes first.
       responseHeaders.set('Accept-Ranges', 'bytes')
       if (responseHeaders.has('content-encoding')) {
         responseHeaders.delete('content-length')
-        responseHeaders.delete('Content-Length')
         responseHeaders.delete('content-encoding')
-        responseHeaders.delete('Content-Encoding')
       }
-      return new Response(upstreamResponse.body, {
+      let body: BodyInit | null
+      if (request.method === 'HEAD' || !reader) {
+        body = null
+        try {
+          await reader?.cancel()
+        } catch {}
+      } else if (bodyDone) {
+        body = peeked
+      } else {
+        const upstreamReader = reader
+        body = new ReadableStream<Uint8Array>({
+          start(c) {
+            if (peeked.length > 0) c.enqueue(peeked)
+          },
+          async pull(c) {
+            try {
+              const { done, value } = await upstreamReader.read()
+              if (done) c.close()
+              else if (value) c.enqueue(value)
+            } catch (err) {
+              c.error(err)
+            }
+          },
+          cancel(reason) {
+            controller.abort()
+            return upstreamReader.cancel(reason).catch(() => {})
+          },
+        })
+      }
+      return new Response(body, {
         status: upstreamResponse.status,
         headers: responseHeaders,
       })
     } catch (err: any) {
-      lastError = `Candidate ${candidate} error: ${err.message || err}`
+      clearTimeout(timer)
+      lastError = `Candidate ${candidate} error: ${err?.message || err}`
+      lastFetchFailure = timedOut || err?.name === 'AbortError' || err?.name === 'TimeoutError'
+        ? 'timeout'
+        : /blocked|not allowed|forbidden|itself|loop/i.test(String(err?.message || ''))
+          ? 'blocked'
+          : 'unreachable'
       continue
     }
   }
 
+  const failHeaders: Record<string, string> = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Expose-Headers': '*',
+    'Content-Type': 'text/plain',
+    'Cache-Control': 'no-store',
+  }
+  // No upstream response at all: report it as a proxy-side reachability
+  // failure (523) rather than a stream verdict; the client treats it as
+  // inconclusive.
+  if (lastFetchFailure && lastHttpStatus === 0) {
+    failHeaders['X-Proxy-Error'] = lastFetchFailure
+    return new Response(`Proxy Error: upstream ${lastFetchFailure}. ${lastError || ''}`, { status: 523, headers: failHeaders })
+  }
+  if (lastHttpStatus === 401 || lastHttpStatus === 403) failHeaders['X-Proxy-Error'] = 'blocked'
   return new Response(`Proxy Error: All candidates failed. ${lastError || ''}`, {
     status: 502,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Content-Type': 'text/plain',
-    },
+    headers: failHeaders,
   })
 }

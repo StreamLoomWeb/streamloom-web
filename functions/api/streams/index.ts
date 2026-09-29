@@ -22,6 +22,7 @@
  * a different POP, so verification is best-effort, not a guarantee.
  */
 
+import { isPlaylistBytes, looksLikeHtml, peekBody, sniffKind } from '../_lib/sniff'
 interface EdgeStreamsPayload {
   channelId: string
   workingStream: string | null
@@ -42,51 +43,78 @@ function rankResolution(quality: string | null | undefined): number {
   return 0
 }
 
-async function probeStreamEndpoint(url: string, timeoutMs = 2500): Promise<boolean> {
+const DEFAULT_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+const PROBE_READ_BYTES = 2048
+const POSITIVE_TTL_S = 7200
+/** A negative verdict is often transient (a busy origin, one bad POP); keep it short. */
+const NEGATIVE_TTL_S = 600
+
+interface ProbeIdentity {
+  ua?: string
+  ref?: string
+}
+
+async function probeStreamEndpoint(url: string, timeoutMs = 2500, identity: ProbeIdentity = {}): Promise<boolean> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const parsed = new URL(url)
     if (!['http:', 'https:'].includes(parsed.protocol)) {
       return false
     }
 
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-
     const res = await fetch(parsed.toString(), {
       method: 'GET',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        Referer: parsed.origin,
+        'User-Agent': identity.ua || DEFAULT_UA,
+        Referer: identity.ref || parsed.origin,
         Range: 'bytes=0-2048',
       },
       signal: controller.signal,
       redirect: 'follow',
     })
-    clearTimeout(timeoutId)
 
     if (!res.ok && res.status !== 206) {
+      try {
+        await res.body?.cancel()
+      } catch {}
       return false
     }
 
     const contentType = (res.headers.get('content-type') || '').toLowerCase()
-    if (contentType.includes('text/html')) {
-      return false
+    const reader = res.body ? res.body.getReader() : null
+    if (!reader) return false
+    try {
+      // At most ~2 KB, then cancel: a live TS stream never ends.
+      const peek = await peekBody(reader, PROBE_READ_BYTES)
+      const bytes = peek.bytes
+      if (contentType.includes('text/html') && looksLikeHtml(bytes)) return false
+      if (isPlaylistBytes(bytes)) return true
+      if (
+        contentType.includes('mpegurl') ||
+        contentType.includes('video/') ||
+        contentType.includes('audio/')
+      ) {
+        return true
+      }
+      // Mislabelled or unlabelled (video/mp2t, octet-stream, none): trust the bytes.
+      return sniffKind(bytes) !== 'unknown'
+    } finally {
+      try {
+        await reader.cancel()
+      } catch {}
     }
-
-    const text = await res.text()
-    const trimmed = text.trimStart().toLowerCase()
-    if (
-      trimmed.startsWith('#extm3u') ||
-      contentType.includes('mpegurl') ||
-      contentType.includes('video/')
-    ) {
-      return true
-    }
-
-    return false
   } catch {
     return false
+  } finally {
+    clearTimeout(timeoutId)
   }
+}
+
+async function urlSetHash(urls: string[]): Promise<string> {
+  const data = new TextEncoder().encode([...urls].sort().join('\n'))
+  const digest = await crypto.subtle.digest('SHA-256', data)
+  return Array.from(new Uint8Array(digest).slice(0, 8), (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
 export const onRequest: PagesFunction = async (context) => {
@@ -111,11 +139,12 @@ export const onRequest: PagesFunction = async (context) => {
 
   // Collect and deduplicate candidate URLs
   const rawCandidateList: string[] = []
-  if (urlsParam) {
-    rawCandidateList.push(...urlsParam.split(',').map((u) => u.trim()))
-  }
   if (urlParams.length > 0) {
+    // Repeated `url` params: a URL may itself contain commas, so these are never split.
     rawCandidateList.push(...urlParams.map((u) => u.trim()))
+  } else if (urlsParam) {
+    // Legacy comma-separated form, only when no repeated `url` was sent.
+    rawCandidateList.push(...urlsParam.split(',').map((u) => u.trim()))
   }
 
   // Resolution labels arrive positionally aligned with the `urls` list.
@@ -144,7 +173,12 @@ export const onRequest: PagesFunction = async (context) => {
   }
 
   // Check edge POP cache
-  const cacheKey = `https://streamloom.internal/edge-streams/${encodeURIComponent(channelId)}`
+  const identity: ProbeIdentity = {
+    ua: urlObj.searchParams.get('ua') || undefined,
+    ref: urlObj.searchParams.get('ref') || undefined,
+  }
+  // The verdict is about this set of URLs, so the key carries a hash of it.
+  const cacheKey = `https://streamloom.internal/edge-streams/${encodeURIComponent(channelId)}/${await urlSetHash(candidateUrls)}`
   let edgeCache: any = null
   try {
     // @ts-ignore
@@ -179,7 +213,7 @@ export const onRequest: PagesFunction = async (context) => {
   const deadCandidates: string[] = []
 
   const firstCandidate = candidateUrls[0]
-  const firstIsWorking = await probeStreamEndpoint(firstCandidate, 2500)
+  const firstIsWorking = await probeStreamEndpoint(firstCandidate, 2500, identity)
 
   if (firstIsWorking) {
     workingCandidates.push(firstCandidate)
@@ -188,7 +222,7 @@ export const onRequest: PagesFunction = async (context) => {
     // Try candidate 2 synchronously if available
     if (candidateUrls.length > 1) {
       const secondCandidate = candidateUrls[1]
-      const secondIsWorking = await probeStreamEndpoint(secondCandidate, 2500)
+      const secondIsWorking = await probeStreamEndpoint(secondCandidate, 2500, identity)
       if (secondIsWorking) {
         workingCandidates.push(secondCandidate)
       } else {
@@ -213,7 +247,7 @@ export const onRequest: PagesFunction = async (context) => {
         status: 200,
         headers: {
           'Content-Type': 'application/json; charset=utf-8',
-          'Cache-Control': 'public, max-age=7200',
+          'Cache-Control': `public, max-age=${payload.workingStream ? POSITIVE_TTL_S : NEGATIVE_TTL_S}`,
           'Access-Control-Allow-Origin': '*',
         },
       })
@@ -234,7 +268,7 @@ export const onRequest: PagesFunction = async (context) => {
 
   const backgroundJob = async () => {
     for (const url of remainingCandidates) {
-      const ok = await probeStreamEndpoint(url, 3000)
+      const ok = await probeStreamEndpoint(url, 3000, identity)
       if (ok) {
         if (!payload.workingCandidates.includes(url)) {
           payload.workingCandidates.push(url)
@@ -255,7 +289,7 @@ export const onRequest: PagesFunction = async (context) => {
           status: 200,
           headers: {
             'Content-Type': 'application/json; charset=utf-8',
-            'Cache-Control': 'public, max-age=7200', // 2-hour TTL at edge
+            'Cache-Control': `public, max-age=${payload.workingStream ? POSITIVE_TTL_S : NEGATIVE_TTL_S}`, // 2-hour TTL at edge
             'Access-Control-Allow-Origin': '*',
           },
         })
