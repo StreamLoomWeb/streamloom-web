@@ -10,6 +10,7 @@ import { getLanguageName } from '../util/language'
 import { LOGO_SIZE, logoUrl, handleLogoError } from '../util/logo'
 import { preconnectChannel } from '../util/preconnect'
 import { prefetchPlaylist } from '../util/playlistPrefetch'
+import { windowPlaylist } from '../util/playlistWindow'
 import { navigateWithLogoTransition } from '../util/viewTransition'
 import { getTranslation, requestTranslations, useTranslateEnabled } from '../util/translate'
 import './ChannelCard.css'
@@ -51,10 +52,11 @@ export function ChannelCard({ channel, epgChannelIds, size = 'medium', onWatch, 
     sessionStorage.setItem('sl_last_viewed', channel.id)
     const returnPath = location.pathname + location.search
     sessionStorage.setItem('sl_return_to', returnPath)
-    const hasMultipleInPlaylist = Boolean(playlist && playlist.length > 1)
+    const windowed = playlist ? windowPlaylist(playlist, channel.id) : undefined
+    const hasMultipleInPlaylist = Boolean(windowed && windowed.length > 1)
     if (hasMultipleInPlaylist) {
       try {
-        sessionStorage.setItem('sl_active_playlist', JSON.stringify(playlist))
+        sessionStorage.setItem('sl_active_playlist', JSON.stringify(windowed))
       } catch {}
     } else {
       try {
@@ -64,7 +66,7 @@ export function ChannelCard({ channel, epgChannelIds, size = 'medium', onWatch, 
     navigateWithLogoTransition(logoRef.current, () =>
       navigate(`/watch/${encodeURIComponent(channel.id)}`, {
         state: {
-          playlist: hasMultipleInPlaylist ? playlist : undefined,
+          playlist: hasMultipleInPlaylist ? windowed : undefined,
           returnTo: returnPath,
         },
       }),
