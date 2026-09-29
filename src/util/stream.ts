@@ -3,6 +3,8 @@
  * and broken-stream state management.
  */
 
+import { clearNativeHlsMarks } from './nativeHls'
+
 const BROKEN_STREAMS_KEY = 'sl_broken_streams_v2'
 const BROKEN_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
 
@@ -296,6 +298,7 @@ export function cacheWorkingStream(
 }
 
 export function clearWorkingStreams() {
+  clearNativeHlsMarks()
   try {
     localStorage.removeItem(WORKING_STREAMS_KEY)
   } catch {

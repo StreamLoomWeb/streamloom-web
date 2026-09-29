@@ -46,7 +46,11 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     viewport: { width: 1440, height: 900 },
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    // Safari-only player behaviour (the native HLS fallback). Needs `npx playwright install webkit`.
+    { name: 'webkit', testMatch: /safari-native-hls\.spec\.ts/, use: { ...devices['Desktop Safari'] } },
+  ],
   webServer: {
     // Bound to 127.0.0.1 explicitly: `localhost` can resolve to ::1 while the
     // server listens on IPv4 only, which makes the readiness probe hang.

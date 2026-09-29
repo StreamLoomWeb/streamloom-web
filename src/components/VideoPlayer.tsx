@@ -14,6 +14,7 @@ import { classifyStreamUrl, isUnsupportedKind, sniffStreamKind } from '../util/s
 import type { StreamKind } from '../util/streamKind'
 import { startMpegtsEngine } from '../player/engines/mpegts'
 import { startNativeEngine } from '../player/engines/native'
+import { canUseNativeHls, isMseDecodeFailure, markNeedsNativeHls, prefersNativeHls } from '../util/nativeHls'
 import {
   getProxyStreamUrl,
   isMixedContent,
@@ -81,6 +82,12 @@ const START_IDLE_MS = 8000
 const START_IDLE_PROXIED_MS = 12000
 /** Before the first frame: longest a slow but moving load may take. */
 const START_CAP_MS = 20000
+/**
+ * The same cap for Safari's native HLS engine, which buffers far ahead before its first frame
+ * on a slow live stream (measured: 15-19 s on a proxied raw-IP restream that plays in Chrome in
+ * 4 s). The idle rule still applies: no buffer growth for the idle window fails over as before.
+ */
+const NATIVE_HLS_START_CAP_MS = 45000
 /** After playback: longest a stall may go without a media byte. */
 const STALL_IDLE_MS = 8000
 /** After playback: longest a stall may last while bytes trickle in. */
@@ -1098,15 +1105,22 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
       if (!isDisposed) setIsSlowConnecting(true)
     }, 4500)
 
+    // Safari's own HLS engine for a URL its MSE decoder already rejected (util/nativeHls.ts),
+    // and wherever hls.js has no MediaSource at all (iOS before 17.1).
+    const isHlsKind = kind === 'hls' || kind === 'unknown'
+    const useNativeHls = isHlsKind && prefersNativeHls(rawUrl) && canUseNativeHls(video)
+    const nativeHlsEngine = isHlsKind && (useNativeHls || !Hls.isSupported())
+
     // Failover watchdog: re-checks until media stops arriving or the cap is reached.
     const attemptStart = performance.now()
     lastMediaByteAt.current = attemptStart
     const startIdleMs = isProxied ? START_IDLE_PROXIED_MS : START_IDLE_MS
+    const startCapMs = nativeHlsEngine ? NATIVE_HLS_START_CAP_MS : START_CAP_MS
     const checkStart = () => {
       if (isDisposed) return
       const now = performance.now()
       const idle = now - lastMediaByteAt.current
-      const left = START_CAP_MS - (now - attemptStart)
+      const left = startCapMs - (now - attemptStart)
       if (idle < startIdleMs && left > 0) {
         failoverTimer.current = window.setTimeout(checkStart, Math.min(startIdleMs - idle, left))
         return
@@ -1222,7 +1236,10 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
         onPlaying: onEnginePlaying,
         onError: onEngineFailure,
       })
-    } else if (Hls.isSupported()) {
+    } else if (Hls.isSupported() && !useNativeHls) {
+      // Set once a decode failure hands this URL to the native engine, so the errors this
+      // instance keeps raising until the effect re-runs cannot also fail the candidate over.
+      let switchingToNative = false
       const isLowLatency = localStorage.getItem('sl_low_latency') !== 'false'
       const hls = new Hls({
         // Worker spawn costs 100-300ms on low-end TVs; the parse work is tiny here.
@@ -1373,7 +1390,26 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
       })
 
       hls.on(Hls.Events.ERROR, (_, data) => {
-        if (isDisposed) return
+        if (isDisposed || switchingToNative) return
+        // Apple WebKit's MSE decoder rejected the media (field-coded interlaced H.264 does
+        // this; Chrome plays it). Safari's native engine plays the same URL: reopen it there
+        // rather than burning recovery attempts and then the candidate. Fatal or not, since
+        // hls.js first reports a closed MediaSource as recoverable and retries indefinitely.
+        if (
+          data.type === Hls.ErrorTypes.MEDIA_ERROR &&
+          isMseDecodeFailure(data.details, video.error?.code) &&
+          canUseNativeHls(video)
+        ) {
+          switchingToNative = true
+          if (failoverTimer.current) {
+            window.clearTimeout(failoverTimer.current)
+            failoverTimer.current = null
+          }
+          markNeedsNativeHls(rawUrl)
+          hls.stopLoad()
+          setRetryNonce((n) => n + 1)
+          return
+        }
         if (data.fatal) {
           if (failoverTimer.current) {
             window.clearTimeout(failoverTimer.current)
@@ -1459,6 +1495,10 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
         syncNativeTextTracks()
         video.play().catch(() => setIsPlaying(false))
       }
+      // A decoded first frame proves the stream, as FRAG_BUFFERED does for hls.js: when
+      // Safari blocks autoplay with sound, `playing` never comes, and the watchdog must not
+      // fail a working stream over for it. The working-stream cache still waits for `playing`.
+      video.onloadeddata = () => onPlaybackSuccess()
       video.onplaying = () => {
         onPlaybackSuccess()
         setIsPlaying(true)
@@ -1498,6 +1538,7 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
       video.textTracks?.removeEventListener?.('addtrack', syncNativeTextTracks)
       video.textTracks?.removeEventListener?.('change', syncNativeTextTracks)
       video.onloadedmetadata = null
+      video.onloadeddata = null
       video.onplaying = null
       video.onerror = null
       video.onprogress = null
