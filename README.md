@@ -1,6 +1,6 @@
 # StreamLoom Web
 
-**StreamLoom Web** is the high-performance browser-native Progressive Web App (PWA) companion to the [StreamLoom](https://github.com/SoftArchium/streamloom) Android/TV app. It brings the full live-TV & EPG experience to any modern browser — installable like a native app on desktop, mobile, and smart TVs.
+**StreamLoom Web** is the high-performance browser-native web app companion to the [StreamLoom](https://github.com/SoftArchium/streamloom) Android/TV app. It brings the full live-TV & EPG experience to any modern browser — installable like a native app on desktop, mobile, and smart TVs.
 
 ---
 
@@ -16,7 +16,7 @@
 | ⌨️ TV & Desktop Nav | Arrow keys for channel/row navigation, Enter to play, `/` to search, Esc to clear/back, Space, F, M |
 | 🖱️ Trackpad & Mouse | 2-finger horizontal trackpad inertia, mouse wheel horizontal category scroll, card hover states |
 | ⚡ Edge Performance | Cloudflare Pages Anycast edge distribution, Upstash Redis caching (ADR-0015) |
-| 🌐 Installable | Add to home screen from a web app manifest; no service worker, so every visit loads the live deploy (backend ADR-0045) |
+| 🌐 Always current | A plain browser site: no install step and no service worker, so every visit loads the live deploy (backend ADR-0045) |
 | ⚙️ Settings | Data source indicators, low-latency mode toggle, cache management, shortcut reference |
 
 ---

@@ -1,6 +1,6 @@
 # StreamLoom Web — Claude Code Instructions
 
-**StreamLoom Web** is the high-performance browser-native Progressive Web App (PWA) companion to the [StreamLoom](https://github.com/SoftArchium/streamloom) Android/TV app. It delivers full live-TV streaming and EPG guide navigation across desktop, mobile, and smart TV browsers.
+**StreamLoom Web** is the high-performance browser-native web app companion to the [StreamLoom](https://github.com/SoftArchium/streamloom) Android/TV app. It delivers full live-TV streaming and EPG guide navigation across desktop, mobile, and smart TV browsers.
 
 ---
 

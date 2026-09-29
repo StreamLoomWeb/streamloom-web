@@ -1,20 +1,18 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useChannels, useFavourites } from '../hooks/useChannels'
 import { useTheme } from '../hooks/useTheme'
-import { useAppBadge } from '../hooks/useAppBadge'
 import { setTranslationEnabled, useTranslateEnabled } from '../util/translate'
 import { DiceIcon, GlobeIcon, GuideIcon, HeartIcon, HomeIcon, MoonIcon, PlayIcon, SettingsIcon, SunIcon } from './icons'
 import { isSurpriseKey, useSurprise } from './SurpriseMe'
 import './Navbar.css'
 
 export function Navbar() {
-  const { loading, channels } = useChannels()
+  const { loading } = useChannels()
   const { favouriteIds } = useFavourites()
   const { isDark, toggleTheme } = useTheme()
   const translate = useTranslateEnabled()
   const favCount = favouriteIds.size
-  useAppBadge(useMemo(() => channels.filter((c) => c.stream && favouriteIds.has(c.id)).length, [channels, favouriteIds]))
   const { surprise, overlay } = useSurprise()
 
   useEffect(() => {

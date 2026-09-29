@@ -6,7 +6,7 @@ This document defines operational guidelines, system architecture, and quality s
 
 ## 1. Project Context & Objectives
 
-StreamLoom Web is the browser-native Progressive Web App (PWA) companion to the [StreamLoom](https://github.com/SoftArchium/streamloom) Android/TV application.
+StreamLoom Web is the browser-native web app companion to the [StreamLoom](https://github.com/SoftArchium/streamloom) Android/TV application.
 - **Primary Goal**: Deliver high-performance, resilient live-TV streaming across mobile, desktop, and smart TV browsers.
 - **Shared Infrastructure**: Shares backend databases and schema with the Android TV app (Supabase PostgREST backend, Upstash Redis ADR-0015 edge catalogue).
 - **Core Edge Functionality**: Cloudflare Pages edge delivery with real-time M3U8 rewriting proxy for mixed-content resolution and CORS bypass.
@@ -39,7 +39,7 @@ StreamLoom Web is the browser-native Progressive Web App (PWA) companion to the 
 - **Backend & Data**:
   - `@supabase/supabase-js` v2 (backend only - never called from the browser)
   - Upstash Redis REST API (read-only edge catalogue caching via ADR-0015)
-- **Installability**: a static `public/manifest.webmanifest`; no service worker (backend ADR-0045)
+- **Not installable**: no web app manifest and no service worker (backend ADR-0045); it runs as a normal browser site
 - **Linter**: `oxlint` (Rust-based ultra-fast linter)
 - **Edge Deployment**: Cloudflare Pages with Cloudflare Pages Functions (`functions/api/proxy.ts`)
 

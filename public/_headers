@@ -6,12 +6,6 @@
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
 
-/icons/*
-  Cache-Control: public, max-age=604800
-
-/manifest.webmanifest
-  Cache-Control: public, max-age=86400
-
 # The retired service worker's replacement (ADR-0045). A browser still running the old
 # worker must fetch these bytes on its next update check, not an HTTP-cached copy.
 /sw.js

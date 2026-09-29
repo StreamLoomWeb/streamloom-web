@@ -6,7 +6,7 @@ Welcome to **StreamLoom Web**. This guide provides autonomous agents, pair progr
 
 ## 1. Executive Summary
 
-StreamLoom Web is a progressive web application (PWA) built for streaming thousands of live television channels and electronic program guides (EPG) directly in modern web browsers (Desktop, Mobile, and Smart TVs). It shares its backend schema and edge architecture with the [StreamLoom](https://github.com/SoftArchium/streamloom) Android/TV platform.
+StreamLoom Web is a browser web application built for streaming thousands of live television channels and electronic program guides (EPG) directly in modern web browsers (Desktop, Mobile, and Smart TVs). It shares its backend schema and edge architecture with the [StreamLoom](https://github.com/SoftArchium/streamloom) Android/TV platform.
 
 ---
 
