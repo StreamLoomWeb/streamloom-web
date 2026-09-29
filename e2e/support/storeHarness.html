@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>store harness</title>
+  </head>
+  <body>
+    <script type="module">
+      import { mountProbes } from './storeHarness.ts'
+      window.__mountProbes = mountProbes
+      window.__harnessReady = true
+    </script>
+  </body>
+</html>

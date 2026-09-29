@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useSyncExternalStore } from 'react'
 import type { Category, EnrichedChannel, EpgProgram } from '../api/types'
 import {
   fetchCatalogue,
@@ -81,9 +81,27 @@ let _loading = true
 let _error: string | null = null
 let _source: CatalogueSource | 'cache' | null = null
 const _listeners = new Set<() => void>()
+/**
+ * Bumped on every change to the state above. Components read it through
+ * `useSyncExternalStore`, which compares it again once the subscription exists:
+ * a change landing between a render and its commit (a lazy route such as /watch
+ * resolving while the IndexedDB catalogue arrives) re-renders instead of leaving
+ * the page on the state it rendered with ("Loading…" forever).
+ */
+let _version = 0
 
 function notify() {
+  _version += 1
   _listeners.forEach((fn) => fn())
+}
+
+function subscribeCatalogue(listener: () => void): () => void {
+  _listeners.add(listener)
+  return () => { _listeners.delete(listener) }
+}
+
+function catalogueVersion(): number {
+  return _version
 }
 
 onStreamStateChange(() => {
@@ -484,13 +502,7 @@ export function afterCatalogue(fn: () => void): () => void {
 const NO_CHANNELS: EnrichedChannel[] = []
 
 export function useChannels(): UseChannelsResult {
-  const [, setTick] = useState(0)
-
-  useEffect(() => {
-    const rerender = () => setTick((t) => t + 1)
-    _listeners.add(rerender)
-    return () => { _listeners.delete(rerender) }
-  }, [])
+  useSyncExternalStore(subscribeCatalogue, catalogueVersion, catalogueVersion)
 
   // Clearing the error first shows the loading skeleton, so a manual Retry gives feedback.
   const refresh = useCallback(() => {
@@ -549,7 +561,7 @@ const _epgCache = new Map<string, EpgProgram[]>()
 export function useEpg(channelId: string | null) {
   const [fetchedPrograms, setFetchedPrograms] = useState<{ [id: string]: EpgProgram[] }>({})
   const [loading, setLoading] = useState(false)
-  const [tick, setTick] = useState(0)
+  const tick = useSyncExternalStore(subscribeCatalogue, catalogueVersion, catalogueVersion)
 
   const programs = channelId ? (_epgCache.get(channelId) ?? fetchedPrograms[channelId] ?? []) : []
 
@@ -558,11 +570,6 @@ export function useEpg(channelId: string | null) {
   // stored, still being replaced by a background reload) would otherwise never
   // retry: `[channelId]` alone doesn't see it change. Subscribing to the same
   // notifications `useChannels` uses re-checks it whenever the catalogue changes.
-  useEffect(() => {
-    const rerender = () => setTick((t) => t + 1)
-    _listeners.add(rerender)
-    return () => { _listeners.delete(rerender) }
-  }, [])
 
   useEffect(() => {
     if (!channelId || _epgCache.has(channelId) || _generation === null) return
@@ -609,13 +616,17 @@ const _favListeners = new Set<() => void>()
 
 function notifyFav() { _favListeners.forEach((fn) => fn()) }
 
+function subscribeFav(listener: () => void): () => void {
+  _favListeners.add(listener)
+  return () => { _favListeners.delete(listener) }
+}
+
+const favSnapshot = () => _favourites
+
 export function useFavourites() {
-  const [, setTick] = useState(0)
+  useSyncExternalStore(subscribeFav, favSnapshot, favSnapshot)
 
   useEffect(() => {
-    const rerender = () => setTick((t) => t + 1)
-    _favListeners.add(rerender)
-
     function onStorage(e: StorageEvent) {
       if (e.key === FAV_KEY) {
         _favourites = readFavourites()
@@ -625,7 +636,6 @@ export function useFavourites() {
     window.addEventListener('storage', onStorage)
 
     return () => {
-      _favListeners.delete(rerender)
       window.removeEventListener('storage', onStorage)
     }
   }, [])
@@ -683,13 +693,15 @@ let _recentIds: string[] = _recent.map((e) => e.id)
 const _recentListeners = new Set<() => void>()
 function notifyRecent() { _recentListeners.forEach((fn) => fn()) }
 
+function subscribeRecent(listener: () => void): () => void {
+  _recentListeners.add(listener)
+  return () => { _recentListeners.delete(listener) }
+}
+
+const recentSnapshot = () => _recent
+
 export function useRecent() {
-  const [, setTick] = useState(0)
-  useEffect(() => {
-    const rerender = () => setTick((t) => t + 1)
-    _recentListeners.add(rerender)
-    return () => { _recentListeners.delete(rerender) }
-  }, [])
+  useSyncExternalStore(subscribeRecent, recentSnapshot, recentSnapshot)
 
   const addRecent = useCallback((channelId: string) => {
     _recent = [{ id: channelId, t: Date.now() }, ..._recent.filter((e) => e.id !== channelId)].slice(0, RECENT_MAX)
