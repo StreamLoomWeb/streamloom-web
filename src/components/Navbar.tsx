@@ -61,6 +61,7 @@ export function Navbar() {
             aria-label="Surprise me: play a random live channel"
           >
             <DiceIcon />
+            <span className="navbar__btn-label">Surprise me</span>
           </button>
           <button
             className={`navbar__icon-btn navbar__icon-btn--translate ${translate ? 'navbar__icon-btn--active' : ''}`}
@@ -103,6 +104,11 @@ export function Navbar() {
           <span className="mobile-nav__icon"><GuideIcon /></span>
           <span className="mobile-nav__label">TV Guide</span>
         </NavLink>
+
+        <button type="button" className="mobile-nav__item" onClick={surprise} aria-label="Surprise me: play a random live channel">
+          <span className="mobile-nav__icon"><DiceIcon /></span>
+          <span className="mobile-nav__label">Surprise</span>
+        </button>
 
         <NavLink
           to="/favourites"

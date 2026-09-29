@@ -1,5 +1,5 @@
 import { memo, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import type { EnrichedChannel } from '../hooks/useChannels'
 import { useEpg } from '../hooks/useChannels'
 import { useMinuteClock } from '../hooks/useNowPlaying'
@@ -82,6 +82,14 @@ const SoonChip = memo(function SoonChip({ channel, returnTo }: ChipProps) {
  */
 export function StartingSoon({ channels, returnTo }: { channels: EnrichedChannel[]; returnTo: string }) {
   const shown = useMemo(() => channels.filter((c) => c.stream).slice(0, MAX_CHANNELS), [channels])
+  if (!channels.length) {
+    return (
+      <p className="soon-teaser">
+        <span aria-hidden="true">♥</span> Favourite a channel to get “starting soon” alerts and reminders.{' '}
+        <Link to="/favourites">Your favourites</Link>
+      </p>
+    )
+  }
   if (!shown.length) return null
   return (
     <div className="soon-strip" role="list" aria-label="Favourites starting soon">

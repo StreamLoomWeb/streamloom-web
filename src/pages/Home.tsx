@@ -5,6 +5,8 @@ import type { EnrichedChannel } from '../hooks/useChannels'
 import { HeroSection } from '../components/HeroSection'
 import { ResumeLine } from '../components/ResumeLine'
 import { StartingSoon } from '../components/StartingSoon'
+import { FeatureTip } from '../components/FeatureTip'
+import { useSurprise } from '../components/SurpriseMe'
 import { CategoryRow } from '../components/CategoryRow'
 import { PicksRow } from '../components/PicksRow'
 import { SearchBar } from '../components/SearchBar'
@@ -418,6 +420,7 @@ export function Home() {
 
   // Enable keyboard navigation
   useKeyboardNav({ onEscape: clearFilters })
+  const { surprise, overlay: surpriseOverlay } = useSurprise()
 
   const hasActiveFilter =
     Boolean(effectiveCategory) ||
@@ -515,6 +518,8 @@ export function Home() {
           {!hasActiveFilter && <ResumeLine channels={playableChannels} />}
           {!hasActiveFilter && <HeroSection channels={playableChannels} recentIds={recentIds} />}
           {!hasActiveFilter && <StartingSoon channels={favouriteChannels} returnTo="/" />}
+          {!hasActiveFilter && <FeatureTip onSurprise={surprise} />}
+          {surpriseOverlay}
 
           {/* Filter / search toolbar */}
           <div className="home-toolbar">
@@ -577,6 +582,10 @@ export function Home() {
 
             <div className="home-filters-row">
               {/* Quick Desktop select dropdowns */}
+              <button type="button" className="filter-pill filter-pill--surprise" onClick={surprise} title="Play a random live channel (*)">
+                <span aria-hidden="true">🎲</span>
+                <span>Surprise me</span>
+              </button>
               <div className="home-quick-filters">
                 <button
                   className={`filter-pill ${showFavOnly ? 'filter-pill--active' : ''}`}

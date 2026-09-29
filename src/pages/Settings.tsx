@@ -1,3 +1,4 @@
+import { SHORTCUT_GROUPS, openShortcuts } from '../util/shortcutList'
 import { useState, useEffect, useMemo } from 'react'
 import { useChannels, clearCatalogueCache } from '../hooks/useChannels'
 import { useTheme } from '../hooks/useTheme'
@@ -376,55 +377,23 @@ export function Settings() {
             <span className="settings-card__icon">⌨️</span>
             <div>
               <h3>Keyboard & Remote Shortcuts</h3>
-              <p>Effortless navigation for desktop, trackpad, and TV remotes</p>
+              <p>
+                Effortless navigation for desktop, trackpad, and TV remotes. Press{' '}
+                <button type="button" className="settings-btn" onClick={openShortcuts}>?</button>{' '}
+                anywhere for this list.
+              </p>
             </div>
           </div>
           <div className="settings-card__body">
             <div className="shortcut-list">
-              <div className="shortcut-item">
-                <kbd>←</kbd> <kbd>→</kbd>
-                <span>Navigate Channels in Grid / Row</span>
+            {SHORTCUT_GROUPS.flatMap((g) => g.items).map((it) => (
+              <div className="shortcut-item" key={it.label}>
+                {it.keys.map((k) => (
+                  <kbd key={k}>{k}</kbd>
+                ))}
+                <span>{it.label}</span>
               </div>
-              <div className="shortcut-item">
-                <kbd>↑</kbd> <kbd>↓</kbd>
-                <span>Switch Rows / Categories</span>
-              </div>
-              <div className="shortcut-item">
-                <kbd>[</kbd> <kbd>]</kbd>
-                <span>Previous / Next Channel in Player</span>
-              </div>
-              <div className="shortcut-item">
-                <kbd>Enter</kbd>
-                <span>Play Selected Channel</span>
-              </div>
-              <div className="shortcut-item">
-                <kbd>/</kbd>
-                <span>Quick Focus Search</span>
-              </div>
-              <div className="shortcut-item">
-                <kbd>Space</kbd>
-                <span>Play / Pause</span>
-              </div>
-              <div className="shortcut-item">
-                <kbd>F</kbd>
-                <span>Toggle Fullscreen</span>
-              </div>
-              <div className="shortcut-item">
-                <kbd>M</kbd>
-                <span>Toggle Mute</span>
-              </div>
-              <div className="shortcut-item">
-                <kbd>C</kbd>
-                <span>Toggle Subtitles</span>
-              </div>
-              <div className="shortcut-item">
-                <kbd>A</kbd>
-                <span>Cycle Audio Track</span>
-              </div>
-              <div className="shortcut-item">
-                <kbd>Esc</kbd>
-                <span>Clear Filters / Back</span>
-              </div>
+            ))}
             </div>
           </div>
         </section>

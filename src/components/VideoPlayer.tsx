@@ -2079,7 +2079,7 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
             aria-label={sleep.phase === 'running' ? `Sleep timer: ${sleep.minutesLeft} minutes left. Activate to change` : 'Sleep timer'}
             title="Sleep timer: 30 / 60 / 90 min (Z)"
           >
-            🌙{sleep.phase === 'running' ? ` ${sleep.minutesLeft}m` : ''}
+            🌙 {sleep.phase === 'running' ? `${sleep.minutesLeft}m` : 'Sleep'}
           </button>
           <button
             className={`player__fav-btn ${fav ? 'player__fav-btn--active' : ''}`}
@@ -2330,7 +2330,10 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
       {showChannelList && (
         <div className="player__drawer glass">
           <div className="player__drawer-header">
-            <h3>Guide ({guideChannels.length})</h3>
+            <div>
+              <h3>Guide ({guideChannels.length})</h3>
+              <p className="player__drawer-hint">Rest on a channel for a now/next preview</p>
+            </div>
             <button onClick={() => setShowChannelList(false)} aria-label="Close guide">✕</button>
           </div>
           <div className="player__drawer-list">

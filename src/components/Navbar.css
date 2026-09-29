@@ -88,6 +88,21 @@
   transition: color var(--duration-fast) ease, background var(--duration-fast) ease;
   flex-shrink: 0;
 }
+.navbar__btn-label { display: none; }
+@media (min-width: 1200px) {
+  .navbar__icon-btn--surprise {
+    width: auto;
+    padding: 0 14px 0 12px;
+    gap: 6px;
+    border-radius: var(--radius-full);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    border-color: var(--accent);
+    background: var(--accent-glow);
+  }
+  .navbar__icon-btn--surprise .navbar__btn-label { display: inline; }
+}
 .navbar__icon-btn:hover { color: var(--text-primary); background: var(--bg-card-hover); }
 
 .navbar__icon-btn--active {
@@ -151,6 +166,14 @@
     transition: color var(--duration-fast) ease;
     text-decoration: none;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  button.mobile-nav__item {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    font: inherit;
   }
 
   .mobile-nav__icon {

@@ -113,3 +113,10 @@
   outline: 3px solid var(--text-primary);
   outline-offset: 2px;
 }
+
+.soon-teaser {
+  margin: 0 0 var(--space-md);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.soon-teaser a { color: var(--accent-2); font-weight: 600; }
