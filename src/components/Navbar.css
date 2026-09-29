@@ -132,7 +132,8 @@
     display: none;
   }
 
-  .navbar__icon-btn--settings {
+  .navbar__icon-btn--settings,
+  .navbar__icon-btn--surprise {
     display: none;
   }
 

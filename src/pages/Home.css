@@ -400,7 +400,8 @@
     gap: 10px;
   }
 
-  .home-quick-filters {
+  .home-quick-filters,
+  .filter-pill--surprise {
     display: none;
   }
 }
