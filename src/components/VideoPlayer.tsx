@@ -40,6 +40,7 @@ import { SleepOverlay } from './SleepTimer'
 import { useSleepTimer } from '../hooks/useSleepTimer'
 import { isSurpriseKey } from './SurpriseMe'
 import { pickSurprise } from '../util/surprise'
+import { noteFailure } from '../util/recentFailures'
 import { recordWatch } from '../util/watchHistory'
 import { useDocumentPip } from '../hooks/useDocumentPip'
 import { getTranslation, requestTranslations, useTranslateEnabled } from '../util/translate'
@@ -900,6 +901,7 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
     }
 
     // 3. All stream candidates and proxy attempts exhausted for this channel
+    noteFailure(currentChannel.id)
     setHasError(true)
     setIsBuffering(false)
     setIsSlowConnecting(false)

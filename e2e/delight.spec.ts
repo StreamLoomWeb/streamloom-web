@@ -146,3 +146,98 @@ test.describe('Flip preview', () => {
     expect(await page.locator('video').count()).toBe(1)
   })
 })
+
+test.describe('Surprise me pool', () => {
+  const ch = (id: string, url: string) => ({
+    id,
+    categoryIds: [],
+    stream: { channel_id: id, url, quality: null, status: null },
+    streams: [{ channel_id: id, url, quality: null, status: null }],
+  })
+
+  /** Runs pickSurprise in the page (real localStorage) over `n` seeded draws; returns picked ids. */
+  async function draws(page: Page, channels: unknown[], excludeId?: string, seed?: () => void) {
+    if (seed) await page.addInitScript(seed)
+    await page.goto('/')
+    return page.evaluate(
+      async ({ channels, excludeId }) => {
+        const m = await import('/src/util/surprise.ts')
+        const out = new Set<string>()
+        for (let i = 0; i < 40; i++) {
+          const p = m.pickSurprise(channels as never, excludeId, () => (i + 0.5) / 40)
+          out.add(p ? p.id : 'null')
+        }
+        return [...out]
+      },
+      { channels, excludeId },
+    )
+  }
+
+  test('rtmp-only and mpd-only channels are never picked; the current channel is excluded', async ({ page }) => {
+    const channels = [
+      ch('ok', 'https://streams.invalid/a.m3u8'),
+      ch('cur', 'https://streams.invalid/b.m3u8'),
+      ch('rtmp', 'rtmp://streams.invalid/live'),
+      ch('mpd', 'https://streams.invalid/x.mpd?token=1'),
+    ]
+    expect(await draws(page, channels, 'cur')).toEqual(['ok'])
+  })
+
+  test('broken-marked channels are excluded even with hide-broken off', async ({ page }) => {
+    const channels = [ch('ok', 'https://streams.invalid/a.m3u8'), ch('bad', 'https://streams.invalid/b.m3u8')]
+    const picked = await draws(page, channels, undefined, () => {
+      localStorage.setItem('sl_broken_reset_v1', '1')
+      localStorage.setItem('sl_broken_streams_v2', JSON.stringify({ bad: { timestamp: Date.now() } }))
+      localStorage.removeItem('sl_hide_broken')
+    })
+    expect(picked).toEqual(['ok'])
+  })
+
+  test('a cached-working channel is strongly preferred', async ({ page }) => {
+    const channels = Array.from({ length: 10 }, (_, i) => ch(`c${i}`, `https://streams.invalid/${i}.m3u8`))
+    const counts = await (async () => {
+      await page.addInitScript(() => {
+        localStorage.setItem(
+          'sl_working_streams_v1',
+          JSON.stringify({ c3: { url: 'https://streams.invalid/3.m3u8', useProxy: false, timestamp: Date.now() } }),
+        )
+      })
+      await page.goto('/')
+      return page.evaluate(async (channels) => {
+        const m = await import('/src/util/surprise.ts')
+        let hits = 0
+        for (let i = 0; i < 100; i++) if (m.pickSurprise(channels as never, undefined, () => (i + 0.5) / 100)?.id === 'c3') hits++
+        return hits
+      }, channels)
+    })()
+    // weight 26 of 35 total
+    expect(counts).toBeGreaterThan(60)
+  })
+
+  test('recent failures expire after 30 minutes and drop out of the pool unless nothing else remains', async ({
+    page,
+  }) => {
+    await page.goto('/')
+    const r = await page.evaluate(async () => {
+      const f = await import('/src/util/recentFailures.ts')
+      const s = await import('/src/util/surprise.ts')
+      f.clearRecentFailures()
+      const t0 = 1_000_000
+      f.noteFailure('a', t0)
+      const within = f.hasRecentFailure('a', t0 + 29 * 60_000)
+      const expired = f.hasRecentFailure('a', t0 + 30 * 60_000)
+      const mk = (id: string) => ({
+        id,
+        categoryIds: [],
+        stream: { channel_id: id, url: 'https://streams.invalid/x.m3u8', quality: null, status: null },
+        streams: [{ channel_id: id, url: 'https://streams.invalid/x.m3u8', quality: null, status: null }],
+      })
+      f.noteFailure('a')
+      const both = s.pickSurprise([mk('a'), mk('b')] as never, undefined, () => 0)?.id
+      const only = s.pickSurprise([mk('a')] as never, undefined, () => 0)?.id
+      f.clearRecentFailures()
+      return { within, expired, both, only }
+    })
+    expect(r).toEqual({ within: true, expired: false, both: 'b', only: 'a' })
+  })
+})
