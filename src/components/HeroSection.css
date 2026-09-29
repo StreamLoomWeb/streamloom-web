@@ -75,6 +75,7 @@
   font-weight: 800;
   letter-spacing: -1px;
   margin-bottom: var(--space-sm);
+  color: #fff; /* the hero backdrop is always dark, in the light theme too */
   text-shadow: 0 2px 16px rgba(0,0,0,0.7);
 }
 
@@ -213,4 +214,49 @@
     bottom: 12px;
     right: 14px;
   }
+}
+
+.hero__eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--accent-2);
+  margin-bottom: var(--space-xs);
+}
+
+.hero__now {
+  margin-bottom: var(--space-md);
+  max-width: 480px;
+  color: #fff;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.7);
+}
+.hero__now-title,
+.hero__next {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hero__next { font-weight: 500; opacity: 0.85; }
+.hero__now-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-right: 6px;
+  opacity: 0.75;
+}
+.hero__progress {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.25);
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.hero__progress-fill {
+  height: 100%;
+  background: var(--accent-gradient);
 }

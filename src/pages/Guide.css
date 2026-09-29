@@ -45,11 +45,18 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-lg);
+  gap: var(--space-md);
+  padding: var(--space-md) var(--page-padding);
   color: var(--text-muted);
 }
+
+.guide-skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+.guide-skeleton-row__channel { flex: 0 0 120px; height: 48px; border-radius: 12px; }
+.guide-skeleton-row__prog { height: 48px; border-radius: 10px; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 

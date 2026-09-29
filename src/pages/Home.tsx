@@ -476,8 +476,10 @@ export function Home() {
     <div className="page-wrapper home-page">
       {showLoadError ? (
         <div className="home-error" role="alert">
-          <h2 className="home-error__title">Channels aren&apos;t loading right now</h2>
-          <p className="home-error__text">{error}</p>
+          <h2 className="home-error__title">We couldn&apos;t load channels</h2>
+          <p className="home-error__text">
+            Check your internet connection. We&apos;ll keep trying in the background, or you can try again now.
+          </p>
           <button onClick={refresh} autoFocus>Try again</button>
         </div>
       ) : loading && !channels.length ? (
@@ -497,7 +499,7 @@ export function Home() {
       ) : (
         <>
           {/* Hero — only shown when no filters active */}
-          {!hasActiveFilter && <HeroSection channels={playableChannels} />}
+          {!hasActiveFilter && <HeroSection channels={playableChannels} recentIds={recentIds} />}
 
           {/* Filter / search toolbar */}
           <div className="home-toolbar">

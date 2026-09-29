@@ -57,6 +57,48 @@ export function useKeyboardNav(options?: Options) {
         return
       }
 
+      // Vertical order on Home is navbar → hero → toolbar → cards. Up/Down walk it
+      // so a D-pad user can reach the hero and the toolbar, not just the cards.
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key) && activeEl) {
+        const inHero = activeEl.closest('.hero')
+        const inToolbar = activeEl.closest('.home-toolbar')
+        const heroBtns = () =>
+          Array.from(document.querySelectorAll<HTMLElement>('.hero button:not([disabled])')).filter(
+            (el) => el.offsetParent !== null
+          )
+        const searchOrFilter = () =>
+          document.querySelector<HTMLElement>('.home-toolbar .search-bar input') ??
+          document.querySelector<HTMLElement>('.home-toolbar button:not([disabled])')
+        if (inHero) {
+          e.preventDefault()
+          if (e.key === 'ArrowDown') {
+            const t = searchOrFilter()
+            if (t) t.focus()
+            else {
+              const first = document.querySelector<HTMLElement>('[data-card="channel"]')
+              if (first) focusCard(first)
+            }
+          } else if (e.key === 'ArrowUp') {
+            document.querySelector<HTMLElement>('.navbar__link--active, .navbar__link')?.focus()
+          } else {
+            const btns = heroBtns()
+            const i = btns.indexOf(activeEl)
+            const next = btns[i + (e.key === 'ArrowRight' ? 1 : -1)]
+            if (next) next.focus()
+          }
+          return
+        }
+        if (inToolbar && e.key === 'ArrowUp') {
+          const hero = document.querySelector<HTMLElement>('.hero__btn--primary') ?? heroBtns()[0]
+          if (hero) {
+            e.preventDefault()
+            hero.focus()
+            hero.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+            return
+          }
+        }
+      }
+
       // Arrow navigation
       if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
         // If typing inside an input, don't hijack left/right arrows unless arrow down to exit
@@ -156,6 +198,7 @@ export function useKeyboardNav(options?: Options) {
             const searchInput = document.querySelector<HTMLInputElement>('.search-bar input')
             if (searchInput) {
               searchInput.focus()
+              searchInput.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
             }
           }
         }

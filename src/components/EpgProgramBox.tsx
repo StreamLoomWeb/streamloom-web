@@ -82,6 +82,13 @@ export const EpgProgramBox = memo(function EpgProgramBox({
   const width = Math.max(Math.round(slotEnd * PIXELS_PER_MINUTE) - left - GUTTER, 0)
   const isNow = nowOffset >= start && nowOffset < end
 
+  // A programme that has not started yet says how soon, instead of only a clock time.
+  const minsUntil = Math.ceil(start - nowOffset)
+  const startsIn =
+    minsUntil > 0 && minsUntil <= 180
+      ? `Starts in ${minsUntil >= 60 ? `${Math.floor(minsUntil / 60)} h${minsUntil % 60 ? ` ${minsUntil % 60} min` : ''}` : `${minsUntil} min`}`
+      : null
+
   const translated = translate ? getTranslation(program.title) : null
   const title = translated ?? program.title
   const time = formatTime(program.start_time)
@@ -92,7 +99,7 @@ export const EpgProgramBox = memo(function EpgProgramBox({
       <div
         className={`epg-guide__program${isNow ? ' epg-guide__program--now' : ''}`}
         style={{ transform: `translateX(${left}px)`, width }}
-        title={`${time} – ${program.title}${description ? '\n' + description : ''}`}
+        title={`${startsIn ? startsIn + ' · ' : ''}${time} – ${program.title}${description ? '\n' + description : ''}`}
         onClick={() => onPick(program.channel_id)}
         role="button"
         tabIndex={0}
@@ -104,7 +111,7 @@ export const EpgProgramBox = memo(function EpgProgramBox({
         }}
       >
         <span className="epg-guide__prog-title">{title}</span>
-        {width > 90 && <span className="epg-guide__prog-time">{time}</span>}
+        {width > 90 && <span className="epg-guide__prog-time">{startsIn ? `${startsIn} · ${time}` : time}</span>}
         {description && (
           <button
             type="button"

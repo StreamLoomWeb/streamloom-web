@@ -1,4 +1,4 @@
-import { useDeferredValue, useMemo, useState, useEffect } from 'react'
+import { useCallback, useDeferredValue, useMemo, useState, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useChannels, useFavourites, useRecent } from '../hooks/useChannels'
 import { ChannelCard } from '../components/ChannelCard'
@@ -11,9 +11,17 @@ export function Favorites() {
   const { channels, allChannels, epgChannelIds, loading } = useChannels()
   const { favouriteIds } = useFavourites()
   const { addRecent } = useRecent()
+  const onWatch = useCallback((id: string) => addRecent(id), [addRecent])
   const [search, setSearch] = useState('')
 
   const playableChannels = useMemo(() => channels.filter((c) => c.stream), [channels])
+
+  // Shown when there are no favourites yet: a few playable channels with a schedule, so the
+  // page offers somewhere to start instead of an instruction.
+  const suggested = useMemo(
+    () => playableChannels.filter((c) => epgChannelIds.has(c.id)).slice(0, 6),
+    [playableChannels, epgChannelIds]
+  )
 
   const favChannels = useMemo(
     () => playableChannels.filter((c) => favouriteIds.has(c.id)),
@@ -80,9 +88,16 @@ export function Favorites() {
         <div className="favorites-page__empty glass">
           <div className="favorites-page__empty-icon">♥</div>
           <h2>No favourite channels yet</h2>
-          <p>Click the heart icon on any channel card to save it here for quick access.</p>
+          <p>Channels you save show up here for one-step access. A few to start with:</p>
+          {suggested.length > 0 && (
+            <div className="favorites-page__grid favorites-page__suggested">
+              {suggested.map((channel) => (
+                <ChannelCard key={channel.id} channel={channel} epgChannelIds={epgChannelIds} onWatch={onWatch} />
+              ))}
+            </div>
+          )}
           <Link to="/" className="favorites-page__cta-btn">
-            Browse Channels
+            Browse all channels
           </Link>
         </div>
       ) : filtered.length === 0 ? (
@@ -97,7 +112,7 @@ export function Favorites() {
               channel={channel}
               epgChannelIds={epgChannelIds}
               playlist={filteredPlaylist}
-              onWatch={(id) => addRecent(id)}
+              onWatch={onWatch}
             />
           ))}
         </div>

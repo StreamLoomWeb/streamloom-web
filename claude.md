@@ -211,8 +211,10 @@ effect on production until it is added in the dashboard as well, and adding
 ### 3. Keyboard & Smart TV Navigation
 - Navigation uses a single stable listener pattern with `onKeyRef` in `VideoPlayer.tsx` to ensure zero dropped keypresses.
 - Keys:
-  - **Previous Channel**: `ArrowLeft`, `ArrowUp`, `[`, `p`, `P`, `ChannelDown`, `PageUp`, `MediaTrackPrevious`
-  - **Next Channel**: `ArrowRight`, `ArrowDown`, `]`, `n`, `N`, `ChannelUp`, `PageDown`, `MediaTrackNext`
+  - **Previous Channel**: `ArrowLeft`, `ArrowUp`, `[`, `p`, `P`, `ChannelUp`, `PageUp`, `MediaTrackPrevious`
+  - **Next Channel**: `ArrowRight`, `ArrowDown`, `]`, `n`, `N`, `ChannelDown`, `PageDown`, `MediaTrackNext`
+  - **Number entry**: digits `0-9` build a 1-based playlist position ("CH 1 2 _"), jump after 1.5 s or on `Enter`; `Backspace` deletes a digit, `Escape` cancels. Digits are handled before every other key.
+  - **Last channel**: `L` / `MediaLast` (previous channel kept in `sl_prev_channel`)
   - **Playback**: Space (play/pause), `M` (mute), `F` (fullscreen), `Esc` / `Backspace` (exit/back).
 - Custom playlists are preserved only for filtered subsets (`< 500` items) to avoid serializing giant arrays to `sessionStorage` on every keypress.
 

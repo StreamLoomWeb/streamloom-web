@@ -18,6 +18,8 @@ export interface CatalogueOptions {
    * one with no stream (ADR-0033), so the picks row has to cope with it.
    */
   streamlessChannels?: number
+  /** Give every channel an icon URL (the home hero only features channels with one). */
+  withLogos?: boolean
 }
 
 export function scheduleFor(channelId: string, ended: boolean): unknown[] {
@@ -43,7 +45,7 @@ export function syntheticCatalogue(options: CatalogueOptions = {}) {
   const channels = Array.from({ length: totalChannels }, (_, i) => ({
     id: `ch${i}.xx`,
     name: `Channel ${i}`,
-    logo: null,
+    logo: options.withLogos ? `https://icons.softarchium.com/ch${i}.xx.webp` : null,
     country: 'US',
     is_active: true,
     channel_categories: [{ category_id: 'news' }],

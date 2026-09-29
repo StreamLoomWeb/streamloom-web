@@ -136,9 +136,14 @@ export function Guide() {
       </div>
 
       {loading ? (
-        <div className="guide-page__loading">
-          <div className="guide-loader" />
-          <p>Loading channel guide…</p>
+        <div className="guide-page__loading" role="status" aria-label="Loading channel guide">
+          {Array.from({ length: 8 }, (_, i) => (
+            <div key={i} className="guide-skeleton-row">
+              <div className="skeleton guide-skeleton-row__channel" />
+              <div className="skeleton guide-skeleton-row__prog" style={{ width: `${30 + ((i * 17) % 35)}%` }} />
+              <div className="skeleton guide-skeleton-row__prog" style={{ width: `${20 + ((i * 11) % 25)}%` }} />
+            </div>
+          ))}
         </div>
       ) : (
         <EpgGuide
