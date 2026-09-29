@@ -7,6 +7,7 @@ import type { EnrichedChannel } from '../hooks/useChannels'
 import { getCategoryWeights } from './watchHistory'
 import { getWorkingMapSnapshot, isChannelHidden, isStreamBroken } from './stream'
 import { hasRecentFailure } from './recentFailures'
+import { isUnsupportedStreamUrl } from './streamKind'
 
 /** A stream known to work outweighs a whole category affinity: a surprise should play. */
 const WORKING_BONUS = 20
@@ -14,17 +15,10 @@ const WORKING_BONUS = 20
 const RECENT_SUCCESS_BONUS = 5
 const RECENT_SUCCESS_MS = 24 * 60 * 60 * 1000
 
-/** Local stand-in until the shared stream-kind util lands: schemes and formats the player cannot open. */
-function isUnsupportedUrl(url: string): boolean {
-  const u = url.trim().toLowerCase()
-  if (/^(rtmps?|rtsp|udp|mms|mmsh):/.test(u)) return true
-  return /\.mpd([?#]|$)/.test(u)
-}
-
 function isPlayable(c: EnrichedChannel): boolean {
   if (!c.stream) return false
   const urls = c.streams?.length ? c.streams.map((s) => s.url) : [c.stream.url]
-  return urls.some((u) => !isUnsupportedUrl(u))
+  return urls.some((u) => !isUnsupportedStreamUrl(u))
 }
 
 export function surpriseWeight(

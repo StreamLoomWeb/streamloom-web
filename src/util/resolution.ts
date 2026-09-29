@@ -11,6 +11,7 @@
  */
 
 import type { Stream } from '../api/types'
+import { withXtreamHlsTwins } from './streamKind'
 
 /** Higher score wins. Unknown resolutions rank lowest so named ones always win. */
 export function rankResolution(quality: string | null | undefined): number {
@@ -61,6 +62,10 @@ export function orderStreamsForPlayback(
   streams: Stream[],
   workingUrl?: string | null
 ): Stream[] {
+  return withXtreamHlsTwins(orderCore(streams, workingUrl))
+}
+
+function orderCore(streams: Stream[], workingUrl?: string | null): Stream[] {
   if (streams.length <= 1) return streams
 
   const ordered = sortStreamsByResolution(streams)

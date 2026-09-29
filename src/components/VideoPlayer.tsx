@@ -10,6 +10,10 @@ import { getCurrentProgram, getNextProgram, programProgress } from '../util/epgN
 import { LOGO_SIZE, logoUrl, handleLogoError } from '../util/logo'
 import { markPlayerLogoForTransition } from '../util/viewTransition'
 import { orderStreamsForPlayback, rankResolution } from '../util/resolution'
+import { classifyStreamUrl, isUnsupportedKind, sniffStreamKind } from '../util/streamKind'
+import type { StreamKind } from '../util/streamKind'
+import { startMpegtsEngine } from '../player/engines/mpegts'
+import { startNativeEngine } from '../player/engines/native'
 import {
   getProxyStreamUrl,
   isMixedContent,
@@ -206,6 +210,8 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
   const autoRetryCount = useRef(0)
   const failoverToNextAttemptRef = useRef<(cause: FailureClass, errorClass?: ErrorClass) => void>(() => {})
   const failureEvidenceRef = useRef<FailureEvidence | null>(null)
+  /** Engine chosen by a content sniff for a URL whose kind the URL alone could not tell. */
+  const kindOverrideRef = useRef(new Map<string, StreamKind>())
 
   /** Tears down the engine, keeping its bandwidth measurement for the next start. */
   const destroyHls = useCallback(() => {
@@ -873,8 +879,8 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
     // failure, a timeout or the watchdog is never reported, since it says nothing about the stream.
     if (cause === 'stream') failPlay(currentChannel.id, curUrl, errorClass ?? 'other')
 
-    // 1. If currently direct, retry via edge proxy
-    if (!currentIsProxied && curUrl && !curUrl.startsWith('/api/proxy')) {
+    // 1. If currently direct, retry via edge proxy (never for a stream type no engine opens)
+    if (!currentIsProxied && curUrl && !curUrl.startsWith('/api/proxy') && !isUnsupportedKind(classifyStreamUrl(curUrl))) {
       showToast('Direct stream blocked, retrying via edge proxy…')
       mediaRecoveryAttempts.current = 0
       isProxiedRef.current = true
@@ -1028,9 +1034,13 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
 
   // After every candidate failed, try the whole ladder again on a jittered backoff
   // (streams often come back within a minute); a click or a channel change cancels it.
+  const allUnsupported = useMemo(
+    () => channelStreams.length > 0 && channelStreams.every((s) => isUnsupportedKind(classifyStreamUrl(s.url))),
+    [channelStreams]
+  )
   useEffect(() => {
     hasErrorRef.current = hasError
-    if (!hasError) return
+    if (!hasError || allUnsupported) return
     const delays = [5000, 15000, 45000]
     const step = autoRetryCount.current
     if (step >= delays.length) return
@@ -1040,7 +1050,7 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
       handleRetry()
     }, delays[step] * (0.8 + Math.random() * 0.4))
     return () => window.clearTimeout(timer)
-  }, [hasError, channel.id, handleRetry])
+  }, [hasError, allUnsupported, channel.id, handleRetry])
   useEffect(() => {
     autoRetryCount.current = 0
   }, [channel.id])
@@ -1060,6 +1070,18 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
     // No-op while a session for this channel is open, so a proxy retry or the next candidate
     // does not count as a second `play`.
     beginPlay(channel.id, rawUrl)
+
+    const kind = kindOverrideRef.current.get(rawUrl) ?? classifyStreamUrl(rawUrl)
+    if (isUnsupportedKind(kind)) {
+      // RTMP/RTSP/UDP/DASH cannot play in a browser here: skip without touching the network.
+      let skipped = false
+      window.queueMicrotask(() => {
+        if (!skipped) failoverToNextAttemptRef.current('stream')
+      })
+      return () => {
+        skipped = true
+      }
+    }
 
     let isDisposed = false
     let networkRecoveryAttempts = 0
@@ -1169,7 +1191,38 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
       setActiveSubtitleTrack(activeIdx)
     }
 
-    if (Hls.isSupported()) {
+    let engineCleanup: (() => void) | null = null
+    const onEngineFailure = () => {
+      if (isDisposed) return
+      if (failoverTimer.current) {
+        window.clearTimeout(failoverTimer.current)
+        failoverTimer.current = null
+      }
+      failoverToNextAttemptRef.current('stream', 'other')
+    }
+    const onEnginePlaying = () => {
+      onPlaybackSuccess()
+      setIsPlaying(true)
+    }
+
+    if (kind === 'ts') {
+      video.onplaying = onEnginePlaying
+      video.onerror = onEngineFailure
+      engineCleanup = startMpegtsEngine(video, targetUrl, {
+        onMediaBytes: () => {
+          lastMediaByteAt.current = performance.now()
+        },
+        onError: onEngineFailure,
+      })
+    } else if (kind === 'mp4') {
+      engineCleanup = startNativeEngine(video, targetUrl, {
+        onMediaBytes: () => {
+          lastMediaByteAt.current = performance.now()
+        },
+        onPlaying: onEnginePlaying,
+        onError: onEngineFailure,
+      })
+    } else if (Hls.isSupported()) {
       const isLowLatency = localStorage.getItem('sl_low_latency') !== 'false'
       const hls = new Hls({
         // Worker spawn costs 100-300ms on low-end TVs; the parse work is tiny here.
@@ -1326,6 +1379,24 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
             window.clearTimeout(failoverTimer.current)
             failoverTimer.current = null
           }
+          // An extensionless URL that is really raw TS or MP4: ask what it is, and retry the
+          // same candidate with the right engine before giving it up.
+          if (
+            kind === 'unknown' &&
+            (data.details === Hls.ErrorDetails.MANIFEST_PARSING_ERROR ||
+              data.details === Hls.ErrorDetails.LEVEL_PARSING_ERROR)
+          ) {
+            void sniffStreamKind(rawUrl).then((sniffed) => {
+              if (isDisposed) return
+              if (sniffed === 'ts' || sniffed === 'mp4') {
+                kindOverrideRef.current.set(rawUrl, sniffed)
+                setRetryNonce((n) => n + 1)
+              } else {
+                failoverToNextAttemptRef.current(classifyHlsError(data), errorClassOfHls(data))
+              }
+            })
+            return
+          }
           switch (data.type) {
             case Hls.ErrorTypes.MEDIA_ERROR:
               // Ladder: plain recovery, then swap the audio codec (the usual fix for an
@@ -1423,6 +1494,7 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
         stallTimer.current = null
       }
       destroyHls()
+      engineCleanup?.()
       video.textTracks?.removeEventListener?.('addtrack', syncNativeTextTracks)
       video.textTracks?.removeEventListener?.('change', syncNativeTextTracks)
       video.onloadedmetadata = null
@@ -2024,6 +2096,8 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
             <p className="player__connecting-sub">
               {networkIssue
                 ? 'Your connection appears to be down, so this channel has not been marked unavailable. Retry once you are back online.'
+                : allUnsupported
+                ? "This stream type (RTMP, RTSP, UDP or DASH) can't play in a web browser."
                 : channelStreams.length > 1
                 ? `Tried all ${channelStreams.length} stream candidates directly and via edge proxy.`
                 : isProxied

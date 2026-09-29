@@ -20,6 +20,11 @@ export interface CatalogueOptions {
   streamlessChannels?: number
   /** Give every channel an icon URL (the home hero only features channels with one). */
   withLogos?: boolean
+  /**
+   * Opt-in engine-ladder channels (replace the streams of ch2..ch5): ch2 Xtream `.ts`,
+   * ch3 a raw `.mpegts`, ch4 `.mpd` only, ch5 `rtmp://` only.
+   */
+  engineChannels?: boolean
 }
 
 export function scheduleFor(channelId: string, ended: boolean): unknown[] {
@@ -62,6 +67,18 @@ export function syntheticCatalogue(options: CatalogueOptions = {}) {
       status: 'working',
     })),
   )
+  if (options.engineChannels) {
+    const only: Record<string, string> = {
+      'ch2.xx': 'https://streams.invalid/live/user/pass/2.ts',
+      'ch3.xx': 'https://streams.invalid/ch3.xx.mpegts',
+      'ch4.xx': 'https://streams.invalid/ch4.xx.mpd',
+      'ch5.xx': 'rtmp://streams.invalid/live/ch5',
+    }
+    for (let i = streams.length - 1; i >= 0; i--) if (streams[i].channel_id in only) streams.splice(i, 1)
+    for (const [channel_id, url] of Object.entries(only)) {
+      streams.push({ channel_id, url, quality: '720p', status: 'working' })
+    }
+  }
   const categories = [{ id: 'news', name: 'News' }]
   const epgIds = channels.slice(0, guideChannels).map((c) => c.id)
   return { channels, streams, categories, epgIds }
