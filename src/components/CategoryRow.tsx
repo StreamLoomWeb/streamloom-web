@@ -3,6 +3,7 @@ import { ChannelCard } from './ChannelCard'
 import type { EnrichedChannel } from '../hooks/useChannels'
 import { useOpenChannel } from '../hooks/useOpenChannel'
 import type { OnNowEntry } from '../util/onNow'
+import { getTranslation, requestTranslations, useTranslateEnabled } from '../util/translate'
 import './CategoryRow.css'
 
 interface Props {
@@ -34,6 +35,12 @@ export function CategoryRow({ title, channels, epgChannelIds, onWatch, notes, li
   const sectionRef = useRef<HTMLElement>(null)
   const [visibleCount, setVisibleCount] = useState(INITIAL_CHUNK)
   const [isRevealed, setIsRevealed] = useState(false)
+  const translate = useTranslateEnabled()
+  useEffect(() => {
+    if (!translate || !live) return
+    const titles = live.slice(0, LIVE_SHOWN).map((e) => e.title)
+    if (titles.length > 0) requestTranslations(titles)
+  }, [translate, live])
 
   /*
    * Mounting every card up front cost rows x 24 image nodes before the first
@@ -147,18 +154,21 @@ export function CategoryRow({ title, channels, epgChannelIds, onWatch, notes, li
             <span className="category-row__live-dot" aria-hidden="true" />
             Live now
           </span>
-          {live.slice(0, LIVE_SHOWN).map((entry) => (
-            <button
-              key={entry.channel.id}
-              type="button"
-              className="category-row__live-item"
-              onClick={() => openChannel(entry.channel, { playlist, onWatch })}
-              title={`${entry.title} — ${entry.channel.name}`}
-            >
-              <span className="category-row__live-title">{entry.title}</span>
-              <span className="category-row__live-channel">{entry.channel.name}</span>
-            </button>
-          ))}
+          {live.slice(0, LIVE_SHOWN).map((entry) => {
+            const title = (translate && getTranslation(entry.title)) || entry.title
+            return (
+              <button
+                key={entry.channel.id}
+                type="button"
+                className="category-row__live-item"
+                onClick={() => openChannel(entry.channel, { playlist, onWatch })}
+                title={`${title} — ${entry.channel.name}`}
+              >
+                <span className="category-row__live-title">{title}</span>
+                <span className="category-row__live-channel">{entry.channel.name}</span>
+              </button>
+            )
+          })}
           {live.length > LIVE_SHOWN && (
             <span className="category-row__live-more">+{live.length - LIVE_SHOWN} more</span>
           )}
