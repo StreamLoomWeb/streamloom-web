@@ -3,7 +3,8 @@ import { NavLink } from 'react-router-dom'
 import { useChannels, useFavourites } from '../hooks/useChannels'
 import { useTheme } from '../hooks/useTheme'
 import { setTranslationEnabled, useTranslateEnabled } from '../util/translate'
-import { DiceIcon, GlobeIcon, GuideIcon, HeartIcon, HomeIcon, MoonIcon, PlayIcon, SettingsIcon, SunIcon } from './icons'
+import { BrandMark } from './BrandMark'
+import { DiceIcon, GlobeIcon, GuideIcon, HeartIcon, HomeIcon, MoonIcon, SettingsIcon, SunIcon } from './icons'
 import { isSurpriseKey, useSurprise } from './SurpriseMe'
 import './Navbar.css'
 
@@ -32,7 +33,7 @@ export function Navbar() {
       {/* Top Navbar for all screens */}
       <nav className="navbar glass" role="navigation" aria-label="Main navigation">
         <NavLink to="/" className="navbar__brand">
-          <span className="navbar__logo-icon"><PlayIcon /></span>
+          <span className="navbar__logo-icon"><BrandMark size={24} /></span>
           <span className="navbar__logo-text gradient-text">StreamLoom</span>
         </NavLink>
 

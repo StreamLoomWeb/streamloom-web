@@ -1,10 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#7c6ef7"/>
-      <stop offset="100%" stop-color="#56cfdd"/>
+    <linearGradient id="g" gradientUnits="userSpaceOnUse" x1="0" y1="22" x2="0" y2="86">
+      <stop offset="0" stop-color="#00D4FF"/>
+      <stop offset="1" stop-color="#8B5CF6"/>
     </linearGradient>
+    <clipPath id="c"><path d="M37.75,24.77 Q33,22 33,27.5 L33,80.5 Q33,86 37.75,83.23 L83.25,56.77 Q88,54 83.25,51.23 Z"/></clipPath>
   </defs>
-  <rect width="32" height="32" rx="8" fill="url(#g)"/>
-  <polygon points="12,8 26,16 12,24" fill="white"/>
+  <rect width="108" height="108" rx="24" fill="#0A0E1A"/>
+  <circle cx="54" cy="54" r="40" fill="#162038"/>
+  <circle cx="54" cy="54" r="26" fill="#1A284C"/>
+  <g clip-path="url(#c)"><path fill="url(#g)" fill-rule="evenodd" d="M37.75,24.77 Q33,22 33,27.5 L33,80.5 Q33,86 37.75,83.23 L83.25,56.77 Q88,54 83.25,51.23 Z M52.5,40.03 h51 a4.5,4.5 0 0 1 4.5,4.5 v0 a4.5,4.5 0 0 1 -4.5,4.5 h-51 a4.5,4.5 0 0 1 -4.5,-4.5 v0 a4.5,4.5 0 0 1 4.5,-4.5 Z M-5.5,58.97 h64 a4.5,4.5 0 0 1 4.5,4.5 v0 a4.5,4.5 0 0 1 -4.5,4.5 h-64 a4.5,4.5 0 0 1 -4.5,-4.5 v0 a4.5,4.5 0 0 1 4.5,-4.5 Z"/></g>
 </svg>

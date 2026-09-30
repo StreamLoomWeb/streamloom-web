@@ -23,9 +23,8 @@
 }
 
 .navbar__logo-icon {
-  font-size: 20px;
-  color: var(--accent);
-  text-shadow: 0 0 12px var(--accent-glow);
+  display: inline-flex;
+  align-items: center;
 }
 
 .navbar__logo-text {
