@@ -1,6 +1,12 @@
 import { useState, useMemo, useCallback, useRef, useEffect, useDeferredValue } from 'react'
 import { useLocation } from 'react-router-dom'
-import { useChannels, useFavourites, useRecent, formatWatchedAgo } from '../hooks/useChannels'
+import {
+  useChannels,
+  useFavourites,
+  useRecent,
+  useSessionAffinity,
+  formatWatchedAgo,
+} from '../hooks/useChannels'
 import type { EnrichedChannel } from '../hooks/useChannels'
 import { HeroSection } from '../components/HeroSection'
 import { ResumeLine } from '../components/ResumeLine'
@@ -64,6 +70,7 @@ export function Home() {
   const { channels, allChannels, categories, epgChannelIds, loading, error, refresh } = useChannels()
   const { favouriteIds } = useFavourites()
   const { recentIds, recentEntries, addRecent } = useRecent()
+  const affinity = useSessionAffinity()
 
   // Initialize filters from sessionStorage so they are preserved upon returning from player
   const [search, setSearch] = useState(() => sessionStorage.getItem('sl_active_search') || '')
@@ -240,7 +247,13 @@ export function Home() {
       }))
   }, [derived.facetCounts])
 
-  // 2. Faceted Categories: only categories with channels in current subset, with dynamic counts
+  // 2. Faceted Categories: only categories with channels in current subset, with dynamic counts.
+  // Ordered by this session's own watch affinity first (a category the user has
+  // actually watched two or more channels from this visit floats to the top, most-
+  // watched first), then by the curated priority order, then alphabetically — never
+  // filtered, only reordered. The >= 2 threshold means one stray click never
+  // reshuffles the whole page; it takes a real pattern to move a row, which keeps
+  // the layout predictable for D-pad/TV muscle memory between watches.
   const availableCategories = useMemo(() => {
     return categories
       .filter((cat) => (derived.facetCounts.categories.get(cat.id) ?? 0) > 0)
@@ -250,6 +263,9 @@ export function Home() {
         count: derived.facetCounts.categories.get(cat.id) ?? 0,
       }))
       .sort((a, b) => {
+        const affA = affinity.get(a.id) ?? 0
+        const affB = affinity.get(b.id) ?? 0
+        if (affA !== affB && Math.max(affA, affB) >= 2) return affB - affA
         const aIndex = PRIORITY_CATEGORIES.indexOf(a.id.toLowerCase())
         const bIndex = PRIORITY_CATEGORIES.indexOf(b.id.toLowerCase())
         if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex
@@ -257,7 +273,7 @@ export function Home() {
         if (bIndex !== -1) return 1
         return a.name.localeCompare(b.name)
       })
-  }, [categories, derived.facetCounts])
+  }, [categories, derived.facetCounts, affinity])
 
   // 3. Faceted Languages: only languages present in the current subset
   const availableLanguages = useMemo(() => {

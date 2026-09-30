@@ -713,6 +713,59 @@ export function useRecent() {
   return { recentIds: _recentIds, recentEntries: _recent, addRecent }
 }
 
+// ---- Session category affinity ----
+// How many channels the user has watched from each category, this tab session
+// only. sessionStorage (not localStorage) so it clears with the tab, never
+// crosses sessions or devices, and needs no account — the same non-persistence
+// Home.tsx already relies on for `sl_active_cat` et al. Used only to reorder
+// existing category rows/pills toward what this session has actually shown
+// interest in; it never filters anything out or is sent anywhere.
+//
+// Bumped from VideoPlayer (next to `addRecent`), not from a Home click handler:
+// that covers every way a channel actually starts playing (Home, Favorites, the
+// EPG guide, zapping), and it means the reorder only ever takes effect on the
+// *next* Home mount — never mid-transition while the row the user just clicked
+// is still animating away.
+const AFFINITY_KEY = 'sl_session_affinity_v1'
+
+/** A Map, not a plain object, so a category id can never collide with a prototype key. */
+function readAffinity(): Map<string, number> {
+  try {
+    const parsed: unknown = JSON.parse(sessionStorage.getItem(AFFINITY_KEY) ?? '[]')
+    if (!Array.isArray(parsed)) return new Map()
+    const entries = parsed.filter(
+      (e): e is [string, number] =>
+        Array.isArray(e) && e.length === 2 && typeof e[0] === 'string' && Number.isFinite(e[1]) && e[1] >= 0,
+    )
+    return new Map(entries)
+  } catch { return new Map() }
+}
+
+let _affinity: Map<string, number> = readAffinity()
+const _affinityListeners = new Set<() => void>()
+function notifyAffinity() { _affinityListeners.forEach((fn) => fn()) }
+
+function subscribeAffinity(listener: () => void): () => void {
+  _affinityListeners.add(listener)
+  return () => { _affinityListeners.delete(listener) }
+}
+
+const affinitySnapshot = () => _affinity
+
+/** Bumps every one of a watched channel's categories by one, this session only. */
+export function bumpCategoryAffinity(categoryIds: string[]) {
+  if (categoryIds.length === 0) return
+  const next = new Map(_affinity)
+  for (const id of categoryIds) next.set(id, (next.get(id) ?? 0) + 1)
+  _affinity = next
+  try { sessionStorage.setItem(AFFINITY_KEY, JSON.stringify([...next])) } catch { /* storage full or blocked */ }
+  notifyAffinity()
+}
+
+export function useSessionAffinity(): Map<string, number> {
+  return useSyncExternalStore(subscribeAffinity, affinitySnapshot, affinitySnapshot)
+}
+
 /** "watched 2h ago"; null when the time is unknown (migrated entry). */
 export function formatWatchedAgo(t: number, now = Date.now()): string | null {
   if (!t) return null

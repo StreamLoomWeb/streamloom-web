@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import Hls, { type PlaylistLoaderConstructor } from 'hls.js'
 import type { EnrichedChannel } from '../hooks/useChannels'
-import { useChannels, useEpg, useFavourites, useRecent } from '../hooks/useChannels'
+import { useChannels, useEpg, useFavourites, useRecent, bumpCategoryAffinity } from '../hooks/useChannels'
 import { useOccasionAccessory } from '../api/occasion'
 import { FixerBotMascot } from './FixerBotMascot'
 import { getCurrentProgram, getNextProgram, programProgress } from '../util/epgNow'
@@ -1519,6 +1519,7 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
     }
 
     addRecent(channel.id)
+    bumpCategoryAffinity(channel.categoryIds)
     sessionStorage.setItem('sl_last_viewed', channel.id)
 
     return () => {
@@ -1545,7 +1546,7 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
       video.onerror = null
       video.onprogress = null
     }
-  }, [channel.id, activeStreamIdx, isProxied, retryNonce, channelStreams, channel.stream, addRecent, destroyHls])
+  }, [channel.id, channel.categoryIds, activeStreamIdx, isProxied, retryNonce, channelStreams, channel.stream, addRecent, destroyHls])
 
   const sleep = useSleepTimer(videoRef)
   const cycleSleep = sleep.cycle
