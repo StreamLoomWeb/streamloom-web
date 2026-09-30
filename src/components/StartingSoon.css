@@ -70,7 +70,7 @@
   min-width: 44px;
 }
 .soon-chip__bell--on {
-  background: var(--accent-glow) !important;
+  background: var(--accent-tint) !important;
 }
 
 /* In-app reminder toast */
@@ -89,7 +89,7 @@
   background: var(--bg-card);
   border: 1px solid var(--border-hover);
   border-radius: var(--radius-lg);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-popover);
 }
 .reminder-toast__text {
   font-size: 14px;

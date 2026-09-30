@@ -199,8 +199,8 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: var(--bg-card);
-  border: 1px solid var(--border-subtle);
+  background-color: var(--fill-strong);
+  border: 1px solid var(--border);
   transition: .3s;
   border-radius: 34px;
 }
@@ -213,6 +213,7 @@
   left: 3px;
   bottom: 3px;
   background-color: white;
+  box-shadow: 0 1px 3px rgba(18, 19, 26, 0.25);
   transition: .3s;
   border-radius: 50%;
 }
@@ -236,7 +237,7 @@ input:checked + .toggle-slider:before {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--fill-subtle);
   padding: 8px 12px;
   border-radius: 10px;
   border: 1px solid var(--border-subtle);
@@ -250,7 +251,7 @@ input:checked + .toggle-slider:before {
   font-size: 0.8rem;
   font-weight: 700;
   color: var(--text-primary);
-  box-shadow: 0 2px 0 rgba(0,0,0,0.4);
+  box-shadow: 0 1px 0 var(--border-hover);
 }
 
 .shortcut-item span {

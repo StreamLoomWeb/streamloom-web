@@ -15,7 +15,7 @@ dialog.filter-sheet-backdrop {
 }
 
 dialog.filter-sheet-backdrop::backdrop {
-  background: rgba(0, 0, 0, 0.75);
+  background: var(--scrim);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
@@ -43,7 +43,7 @@ dialog.filter-sheet-backdrop[open] {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.8);
+  box-shadow: var(--shadow-sheet);
   animation: slideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -56,7 +56,7 @@ dialog.filter-sheet-backdrop[open] {
   width: 36px;
   height: 4px;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--track);
   margin: 10px auto 4px;
   flex-shrink: 0;
 }
@@ -197,7 +197,7 @@ dialog.filter-sheet-backdrop[open] {
   font-size: 10px;
   padding: 1px 5px;
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--fill-strong);
 }
 
 .filter-chip--active .filter-chip__count {
@@ -225,7 +225,7 @@ dialog.filter-sheet-backdrop[open] {
   max-height: 220px;
   overflow-y: auto;
   border-radius: var(--radius-md);
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--fill-subtle);
   border: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -238,7 +238,7 @@ dialog.filter-sheet-backdrop[open] {
   padding: 10px 14px;
   font-size: 13px;
   color: var(--text-secondary);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--border-subtle);
   cursor: pointer;
   transition: background 0.12s ease;
 }
@@ -248,7 +248,7 @@ dialog.filter-sheet-backdrop[open] {
 }
 
 .filter-sheet__country-item:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--fill-hover);
   color: var(--text-primary);
 }
 

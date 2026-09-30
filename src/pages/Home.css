@@ -51,9 +51,9 @@
 }
 
 .home-filter-btn--active {
-  background: rgba(124, 110, 247, 0.2) !important;
+  background: var(--accent-tint) !important;
   border-color: var(--accent) !important;
-  color: #fff !important;
+  color: var(--text-primary) !important;
   box-shadow: 0 2px 12px var(--accent-glow);
 }
 
@@ -62,7 +62,7 @@
   font-weight: 800;
   padding: 2px 6px;
   border-radius: var(--radius-full);
-  background: var(--accent);
+  background: var(--accent-solid);
   color: #fff;
   line-height: 1;
 }
@@ -84,9 +84,9 @@
   border-radius: var(--radius-full);
   font-size: 12px;
   font-weight: 600;
-  background: rgba(124, 110, 247, 0.16);
-  border: 1px solid rgba(124, 110, 247, 0.35);
-  color: #fff;
+  background: var(--accent-tint);
+  border: 1px solid var(--accent);
+  color: var(--text-primary);
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -196,10 +196,10 @@
 }
 
 .filter-pill--active {
-  background: linear-gradient(135deg, rgba(108, 92, 231, 0.25), rgba(0, 206, 201, 0.15)) !important;
+  background: var(--accent-tint) !important;
   border-color: var(--accent) !important;
-  color: #fff !important;
-  box-shadow: 0 4px 14px rgba(108, 92, 231, 0.35);
+  color: var(--text-primary) !important;
+  box-shadow: 0 4px 14px var(--accent-glow);
 }
 
 .filter-pill__icon {
@@ -210,12 +210,12 @@
   font-size: 11px;
   padding: 1px 6px;
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--fill-strong);
   color: var(--text-muted);
 }
 
 .filter-pill--active .filter-pill__count {
-  background: rgba(255, 255, 255, 0.25);
+  background: var(--accent-solid);
   color: #fff;
 }
 
@@ -266,7 +266,7 @@
 .filter-select--active {
   border-color: var(--accent);
   color: var(--text-primary);
-  background: rgba(108, 92, 231, 0.15);
+  background: var(--accent-tint);
 }
 
 .filter-select-arrow {
@@ -426,5 +426,5 @@
 .filter-pill--surprise {
   color: var(--text-primary);
   border-color: var(--accent);
-  background: var(--accent-glow);
+  background: var(--accent-tint);
 }

@@ -36,9 +36,9 @@
   inset: 0;
   background: linear-gradient(
     to top,
-    rgba(10, 10, 15, 0.97) 0%,
-    rgba(10, 10, 15, 0.5) 50%,
-    rgba(10, 10, 15, 0.1) 100%
+    rgba(12, 13, 17, 0.96) 0%,
+    rgba(12, 13, 17, 0.45) 55%,
+    rgba(12, 13, 17, 0.05) 100%
   );
 }
 
@@ -157,13 +157,13 @@
   align-items: center;
   justify-content: center;
   font-size: 10px;
-  color: var(--text-secondary);
+  color: rgba(255, 255, 255, 0.8); /* hero backdrop is always dark */
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.35);
 }
 
 .hero__pause:hover {
-  color: var(--text-primary);
+  color: #fff;
 }
 
 .hero__dot--active {

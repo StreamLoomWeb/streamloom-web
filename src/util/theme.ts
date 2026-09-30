@@ -45,7 +45,7 @@ export function applyThemeToDom(theme: Theme) {
 
   const metaTheme = document.querySelector('meta[name="theme-color"]')
   if (metaTheme) {
-    metaTheme.setAttribute('content', theme === 'light' ? '#f4f4f7' : '#0a0a0f')
+    metaTheme.setAttribute('content', theme === 'light' ? '#f4f4f7' : '#0c0d11')
   }
 }
 

@@ -6,7 +6,7 @@
   padding: 10px 12px 10px 16px;
   border: 1px solid var(--accent);
   border-radius: var(--radius-full);
-  background: var(--accent-glow);
+  background: var(--accent-tint);
   color: var(--text-primary);
 }
 .feature-tip__icon { font-size: 18px; }
@@ -19,7 +19,7 @@
   font-size: 13px;
   font-weight: 700;
   color: #fff;
-  background: var(--accent);
+  background: var(--accent-solid);
 }
 .feature-tip__x {
   flex-shrink: 0;

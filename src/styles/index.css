@@ -19,28 +19,41 @@
   --bg-void: #060709;
   --bg-base: #0c0d11;
   --bg-surface: #13151b;
-  --bg-card: #181b22;
-  --bg-card-hover: #21252f;
+  --bg-card: #1a1d25;
+  --bg-card-hover: #232733;
   --bg-glass: rgba(13, 15, 19, 0.82);
   --bg-glass-hover: rgba(21, 24, 31, 0.92);
 
   --accent: #7c6ef7;
   --accent-2: #56cfdd;
   --accent-glow: rgba(124, 110, 247, 0.35);
-  --accent-gradient: linear-gradient(135deg, #7c6ef7 0%, #56cfdd 100%);
+  --accent-gradient: linear-gradient(135deg, #7c6ef7 0%, #6a8ff0 55%, #56cfdd 100%);
+  --accent-tint: rgba(124, 110, 247, 0.16);
+  --accent-solid: #6a5cf0; /* fill behind white small text: 4.8:1 */
 
   --text-primary: #f3f4f6;
-  --text-secondary: #9499a8;
+  --text-secondary: #a3a8b6;
   --text-muted: #8b91a0; /* >=4.5:1 on every dark surface */
   --text-on-accent: #ffffff;
 
-  --border: rgba(255, 255, 255, 0.08);
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-hover: rgba(255, 255, 255, 0.16);
-  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px rgba(0, 0, 0, 0.45);
-  --shadow-card-hover: 0 2px 6px rgba(0, 0, 0, 0.32), 0 20px 48px rgba(0, 0, 0, 0.5);
-  --shadow-popover: 0 8px 20px rgba(0, 0, 0, 0.28), 0 32px 68px rgba(0, 0, 0, 0.5);
+  --border: rgba(255, 255, 255, 0.07);
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --border-hover: rgba(255, 255, 255, 0.14);
+  --shadow-card: 0 1px 2px rgba(3, 4, 10, 0.35), 0 12px 32px rgba(3, 4, 10, 0.45);
+  --shadow-card-hover: 0 2px 6px rgba(3, 4, 10, 0.35), 0 20px 48px rgba(3, 4, 10, 0.55);
+  --shadow-popover: 0 8px 20px rgba(3, 4, 10, 0.3), 0 32px 68px rgba(3, 4, 10, 0.55);
+  --shadow-sheet: 0 -12px 40px rgba(3, 4, 10, 0.6);
   --shadow-glow: 0 8px 28px var(--accent-glow);
+
+  /* Theme-aware overlays: components use these instead of hardcoded white/black alpha. */
+  --fill-subtle: rgba(255, 255, 255, 0.03);
+  --fill-hover: rgba(255, 255, 255, 0.06);
+  --fill-strong: rgba(255, 255, 255, 0.12);
+  --track: rgba(255, 255, 255, 0.18);
+  --scrim: rgba(4, 5, 8, 0.62);
+  --hairline-inset: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  /* Channel logos are drawn for dark TV backdrops: the thumbnail well stays dark in both themes. */
+  --logo-well: #13151b;
 
   /* Spacing */
   --space-xs: 4px;
@@ -93,31 +106,42 @@
 
 /* ---------- Light Theme: Alabaster Silk (Super Classy & Tailored) ---------- */
 [data-theme="light"] {
-  --bg-void: #eaeaf0;
+  --bg-void: #e9eaf0;
   --bg-base: #f4f4f7;
   --bg-surface: #ffffff;
   --bg-card: #ffffff;
-  --bg-card-hover: #f7f7fa;
+  --bg-card-hover: #f8f8fb;
   --bg-glass: rgba(255, 255, 255, 0.84);
   --bg-glass-hover: rgba(255, 255, 255, 0.95);
 
   --accent: #6052dd;
-  --accent-2: #0284c7;
-  --accent-glow: rgba(96, 82, 221, 0.25);
-  --accent-gradient: linear-gradient(135deg, #6052dd 0%, #0284c7 100%);
+  --accent-2: #0369a1;
+  --accent-glow: rgba(96, 82, 221, 0.18);
+  --accent-gradient: linear-gradient(135deg, #6052dd 0%, #4a63d4 55%, #0369a1 100%);
+  --accent-tint: rgba(96, 82, 221, 0.1);
+  --accent-solid: #6052dd;
 
   --text-primary: #12131a;
-  --text-secondary: #58596b;
-  --text-muted: #636578; /* >=4.5:1 on every light surface */
+  --text-secondary: #474857;
+  --text-muted: #5e6072; /* >=4.5:1 on every light surface */
   --text-on-accent: #ffffff;
 
-  --border: rgba(0, 0, 0, 0.08);
-  --border-subtle: rgba(0, 0, 0, 0.08);
-  --border-hover: rgba(0, 0, 0, 0.16);
-  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.05), 0 12px 32px rgba(0, 0, 0, 0.09);
-  --shadow-card-hover: 0 2px 6px rgba(0, 0, 0, 0.06), 0 20px 48px rgba(0, 0, 0, 0.13);
-  --shadow-popover: 0 8px 20px rgba(0, 0, 0, 0.08), 0 32px 68px rgba(0, 0, 0, 0.16);
+  --border: rgba(18, 19, 26, 0.09);
+  --border-subtle: rgba(18, 19, 26, 0.06);
+  --border-hover: rgba(18, 19, 26, 0.16);
+  --shadow-card: 0 1px 2px rgba(18, 19, 26, 0.05), 0 8px 24px rgba(18, 19, 26, 0.06);
+  --shadow-card-hover: 0 2px 6px rgba(18, 19, 26, 0.06), 0 16px 40px rgba(18, 19, 26, 0.1);
+  --shadow-popover: 0 8px 20px rgba(18, 19, 26, 0.08), 0 28px 60px rgba(18, 19, 26, 0.14);
+  --shadow-sheet: 0 -8px 32px rgba(18, 19, 26, 0.12);
   --shadow-glow: 0 0 24px var(--accent-glow);
+
+  --fill-subtle: rgba(18, 19, 26, 0.03);
+  --fill-hover: rgba(18, 19, 26, 0.05);
+  --fill-strong: rgba(18, 19, 26, 0.07);
+  --track: rgba(18, 19, 26, 0.18);
+  --scrim: rgba(18, 19, 26, 0.34);
+  --hairline-inset: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --logo-well: #1c1f27;
 }
 
 /* ---------- Reset ---------- */
@@ -183,7 +207,7 @@ ul, ol { list-style: none; }
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
   border: 1px solid var(--border);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow: var(--hairline-inset);
 }
 
 /* TV browsers composite backdrop-filter on the CPU/GPU budget of a phone:
