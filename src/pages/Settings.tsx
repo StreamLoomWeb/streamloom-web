@@ -455,7 +455,7 @@ export function Settings() {
                 </span>
                 <span>
                   <a
-                    href="https://github.com/StreamLoomAndroid/streamloom-android/blob/main/docs/PRIVACY_POLICY.md"
+                    href="https://streamloomlegal.github.io/streamloom-legal/"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="privacy-link"
