@@ -1,6 +1,8 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react'
 import { ChannelCard } from './ChannelCard'
 import type { EnrichedChannel } from '../hooks/useChannels'
+import { useOpenChannel } from '../hooks/useOpenChannel'
+import type { OnNowEntry } from '../util/onNow'
 import './CategoryRow.css'
 
 interface Props {
@@ -10,7 +12,16 @@ interface Props {
   onWatch?: (channelId: string) => void
   /** Optional per-channel secondary line keyed by channel id. */
   notes?: Map<string, string>
+  /**
+   * What is on air now in this row, already ranked (guide summary, ADR-0046). The
+   * first few render as a "Live now" strip under the title; empty or absent
+   * renders nothing.
+   */
+  live?: OnNowEntry<EnrichedChannel>[]
 }
+
+/** How many "live now" entries a row names; the rest are counted, not listed. */
+const LIVE_SHOWN = 3
 
 const INITIAL_CHUNK = 24
 const CHUNK_SIZE = 24
@@ -18,7 +29,7 @@ const CHUNK_SIZE = 24
 /** How far ahead of the viewport a row starts mounting its cards. */
 const REVEAL_ROOT_MARGIN = '600px 0px'
 
-export function CategoryRow({ title, channels, epgChannelIds, onWatch, notes }: Props) {
+export function CategoryRow({ title, channels, epgChannelIds, onWatch, notes, live }: Props) {
   const rowRef = useRef<HTMLDivElement>(null)
   const sectionRef = useRef<HTMLElement>(null)
   const [visibleCount, setVisibleCount] = useState(INITIAL_CHUNK)
@@ -55,6 +66,7 @@ export function CategoryRow({ title, channels, epgChannelIds, onWatch, notes }: 
 
   // One stable array per channels identity, so memoised cards are not re-rendered by a fresh prop.
   const playlist = useMemo(() => channels.map((c) => c.id), [channels])
+  const openChannel = useOpenChannel()
 
   // Expand visible channels when needed
   const ensureMoreVisible = useCallback(() => {
@@ -129,6 +141,29 @@ export function CategoryRow({ title, channels, epgChannelIds, onWatch, notes }: 
           </button>
         </div>
       </div>
+      {live && live.length > 0 && (
+        <div className="category-row__live">
+          <span className="category-row__live-label">
+            <span className="category-row__live-dot" aria-hidden="true" />
+            Live now
+          </span>
+          {live.slice(0, LIVE_SHOWN).map((entry) => (
+            <button
+              key={entry.channel.id}
+              type="button"
+              className="category-row__live-item"
+              onClick={() => openChannel(entry.channel, { playlist, onWatch })}
+              title={`${entry.title} — ${entry.channel.name}`}
+            >
+              <span className="category-row__live-title">{entry.title}</span>
+              <span className="category-row__live-channel">{entry.channel.name}</span>
+            </button>
+          ))}
+          {live.length > LIVE_SHOWN && (
+            <span className="category-row__live-more">+{live.length - LIVE_SHOWN} more</span>
+          )}
+        </div>
+      )}
       <div className="category-row__track" ref={rowRef} onScroll={handleScroll} tabIndex={-1}>
         {isRevealed
           ? renderedChannels.map((ch) => (

@@ -1,17 +1,14 @@
 import { memo, useCallback, useEffect, useRef } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
 import type { EnrichedChannel } from '../hooks/useChannels'
 import { useFavourites } from '../hooks/useChannels'
 import { useNowPlaying } from '../hooks/useNowPlaying'
 import { useVisible } from '../hooks/useVisible'
+import { useOpenChannel } from '../hooks/useOpenChannel'
 import { programProgress } from '../util/epgNow'
 import { formatCountryDisplay } from '../util/country'
 import { getLanguageName } from '../util/language'
 import { LOGO_SIZE, logoUrl, handleLogoError } from '../util/logo'
 import { preconnectChannel } from '../util/preconnect'
-import { prefetchPlaylist } from '../util/playlistPrefetch'
-import { windowPlaylist } from '../util/playlistWindow'
-import { navigateWithLogoTransition } from '../util/viewTransition'
 import { getTranslation, requestTranslations, useTranslateEnabled } from '../util/translate'
 import './ChannelCard.css'
 
@@ -27,8 +24,6 @@ interface Props {
 }
 
 function ChannelCardImpl({ channel, epgChannelIds, size = 'medium', onWatch, playlist, note }: Props) {
-  const navigate = useNavigate()
-  const location = useLocation()
   const { isFavourite, toggle } = useFavourites()
   const [visibleRef, visible] = useVisible<HTMLElement>()
   const hasSchedule = epgChannelIds?.has(channel.id) ?? false
@@ -47,33 +42,10 @@ function ChannelCardImpl({ channel, epgChannelIds, size = 'medium', onWatch, pla
   const fav = isFavourite(channel.id)
   const logoRef = useRef<HTMLImageElement | null>(null)
 
+  const openChannel = useOpenChannel()
   const handleClick = useCallback(() => {
-    if (!hasStream) return
-    prefetchPlaylist(channel)
-    onWatch?.(channel.id)
-    sessionStorage.setItem('sl_last_viewed', channel.id)
-    const returnPath = location.pathname + location.search
-    sessionStorage.setItem('sl_return_to', returnPath)
-    const windowed = playlist ? windowPlaylist(playlist, channel.id) : undefined
-    const hasMultipleInPlaylist = Boolean(windowed && windowed.length > 1)
-    if (hasMultipleInPlaylist) {
-      try {
-        sessionStorage.setItem('sl_active_playlist', JSON.stringify(windowed))
-      } catch {}
-    } else {
-      try {
-        sessionStorage.removeItem('sl_active_playlist')
-      } catch {}
-    }
-    navigateWithLogoTransition(logoRef.current, () =>
-      navigate(`/watch/${encodeURIComponent(channel.id)}`, {
-        state: {
-          playlist: hasMultipleInPlaylist ? windowed : undefined,
-          returnTo: returnPath,
-        },
-      }),
-    )
-  }, [hasStream, channel, playlist, location.pathname, location.search, navigate, onWatch])
+    openChannel(channel, { playlist, onWatch, logo: logoRef.current })
+  }, [openChannel, channel, playlist, onWatch])
 
   // A short dwell, so a D-pad sweep along a row does not open a socket per card passed.
   const warmTimer = useRef<number | null>(null)

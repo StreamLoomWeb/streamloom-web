@@ -8,6 +8,7 @@
  *   catalogue/g<N>/categories.json.br         Category[]
  *   catalogue/g<N>/epg/ids.json.br            string[]      (channels with a schedule)
  *   catalogue/g<N>/epg/<channelId>.json.br    EpgProgram[]  (one channel, on demand)
+ *   catalogue/g<N>/epg/summary.json.br        [channelId, SummaryProgramme[]][]  (ADR-0046)
  *
  * Everything here is pure so the golden fixture can be decoded in a plain Node test
  * through the same code the browser runs. The fetching lives in `r2.ts`.
@@ -111,6 +112,11 @@ export function epgIdsUrl(base: string, generation: number): string {
   return base + '/catalogue/g' + generation + '/epg/ids.json.br'
 }
 
+/** The whole generation's compact "what's on" summary (backend ADR-0046). */
+export function epgSummaryUrl(base: string, generation: number): string {
+  return base + '/catalogue/g' + generation + '/epg/summary.json.br'
+}
+
 /**
  * True when a channel id can be an object key. Mirrors `r2ChannelSegment` in the
  * worker: a CDN percent-decodes the path before looking the key up, so an id with
@@ -168,6 +174,42 @@ export const decodeCategories = (value: unknown): Category[] | null => rows<Cate
 export const decodeEpg = (value: unknown): EpgProgram[] | null => rows<EpgProgram>(value, isProgram)
 export const decodeEpgIds = (value: unknown): string[] | null =>
   rows<string>(value, (row) => typeof row === 'string')
+
+// ---- Guide summary (backend ADR-0046) ----
+
+/**
+ * One programme of `epg/summary`: `[startOffsetMinutes, durationMinutes, title]`,
+ * the offset in minutes from the generation (itself a timestamp). A negative
+ * offset is a programme already airing when the generation was published.
+ */
+export type SummaryProgramme = readonly [startOffsetMinutes: number, durationMinutes: number, title: string]
+
+const isSummaryProgramme = (p: unknown): p is SummaryProgramme =>
+  Array.isArray(p) &&
+  Number.isInteger(p[0]) &&
+  Number.isInteger(p[1]) &&
+  (p[1] as number) > 0 &&
+  typeof p[2] === 'string'
+
+/**
+ * Decodes `epg/summary` (`[[channelId, [[start, duration, title], …]], …]`) into a
+ * map keyed by channel id. Null only when the object is not an array at all.
+ *
+ * Unlike the bulk objects, a malformed row or programme is dropped on its own
+ * rather than failing the whole object: the summary only decorates Home, so one
+ * bad entry must not blank every other row's "on now". A channel with no
+ * programmes is left out. Mirrors the app's `decodeSummaryRow` (GuideSummary.kt).
+ */
+export function decodeEpgSummary(value: unknown): Map<string, SummaryProgramme[]> | null {
+  if (!Array.isArray(value)) return null
+  const byChannel = new Map<string, SummaryProgramme[]>()
+  for (const row of value) {
+    if (!Array.isArray(row) || typeof row[0] !== 'string' || row[0] === '' || !Array.isArray(row[1])) continue
+    const programmes = (row[1] as unknown[]).filter(isSummaryProgramme)
+    if (programmes.length > 0) byChannel.set(row[0], programmes)
+  }
+  return byChannel
+}
 
 // ---- Author's picks ----
 

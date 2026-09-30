@@ -14,6 +14,11 @@ import { StartingSoon } from '../components/StartingSoon'
 import { FeatureTip } from '../components/FeatureTip'
 import { useSurprise } from '../components/SurpriseMe'
 import { CategoryRow } from '../components/CategoryRow'
+import { useEpgSummary } from '../hooks/useEpgSummary'
+import { useMinuteClock } from '../hooks/useNowPlaying'
+import { onNowForRow } from '../util/onNow'
+import type { OnNowEntry } from '../util/onNow'
+import { compareAffinity } from '../util/sessionAffinity'
 import { PicksRow } from '../components/PicksRow'
 import { SearchBar } from '../components/SearchBar'
 import { ChannelCard } from '../components/ChannelCard'
@@ -67,7 +72,7 @@ export function Home() {
   // `allChannels` is the list before the hidden/broken filters. The picks row
   // needs it: a pinned channel is never hidden by a broken mark or by the user's
   // hide-broken setting (ADR-0033 §3). It is also what the search index is keyed on.
-  const { channels, allChannels, categories, epgChannelIds, loading, error, refresh } = useChannels()
+  const { channels, allChannels, categories, epgChannelIds, loading, error, refresh, generation } = useChannels()
   const { favouriteIds } = useFavourites()
   const { recentIds, recentEntries, addRecent } = useRecent()
   const affinity = useSessionAffinity()
@@ -251,7 +256,7 @@ export function Home() {
   // Ordered by this session's own watch affinity first (a category the user has
   // actually watched two or more channels from this visit floats to the top, most-
   // watched first), then by the curated priority order, then alphabetically — never
-  // filtered, only reordered. The >= 2 threshold means one stray click never
+  // filtered, only reordered. The threshold (AFFINITY_REORDER_THRESHOLD, 2) means one stray click never
   // reshuffles the whole page; it takes a real pattern to move a row, which keeps
   // the layout predictable for D-pad/TV muscle memory between watches.
   const availableCategories = useMemo(() => {
@@ -263,9 +268,8 @@ export function Home() {
         count: derived.facetCounts.categories.get(cat.id) ?? 0,
       }))
       .sort((a, b) => {
-        const affA = affinity.get(a.id) ?? 0
-        const affB = affinity.get(b.id) ?? 0
-        if (affA !== affB && Math.max(affA, affB) >= 2) return affB - affA
+        const byAffinity = compareAffinity(affinity.get(a.id) ?? 0, affinity.get(b.id) ?? 0)
+        if (byAffinity !== 0) return byAffinity
         const aIndex = PRIORITY_CATEGORIES.indexOf(a.id.toLowerCase())
         const bIndex = PRIORITY_CATEGORIES.indexOf(b.id.toLowerCase())
         if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex
@@ -274,6 +278,25 @@ export function Home() {
         return a.name.localeCompare(b.name)
       })
   }, [categories, derived.facetCounts, affinity])
+
+  // "Live now" per category row (feasibility study rec. 1, extending ADR-0046's
+  // on-now summary): one summary object for the generation, joined client-side
+  // with the rows' own channels, recomputed on the shared minute clock. Entries
+  // are ranked by this session's affinity (rec. 2) and otherwise keep the row's
+  // live-stream order; the row's cards themselves are never reordered.
+  const epgSummary = useEpgSummary(generation)
+  const now = useMinuteClock()
+  const liveByCategory = useMemo(() => {
+    const map = new Map<string, OnNowEntry<EnrichedChannel>[]>()
+    if (!epgSummary || generation === null) return map
+    for (const cat of availableCategories) {
+      const chans = channelsByCategory.get(cat.id)
+      if (!chans) continue
+      const live = onNowForRow(chans, cat.id, epgSummary, generation, now, affinity)
+      if (live.length > 0) map.set(cat.id, live)
+    }
+    return map
+  }, [epgSummary, generation, availableCategories, channelsByCategory, now, affinity])
 
   // 3. Faceted Languages: only languages present in the current subset
   const availableLanguages = useMemo(() => {
@@ -777,6 +800,7 @@ export function Home() {
                     channels={chans}
                     onWatch={handleWatch}
                     epgChannelIds={epgChannelIds}
+                    live={liveByCategory.get(cat.id)}
                   />
                 )
               })}

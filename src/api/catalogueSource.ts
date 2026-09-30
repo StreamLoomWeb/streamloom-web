@@ -15,7 +15,7 @@
 
 import * as redis from './redis'
 import * as r2 from './r2'
-import type { R2Meta } from './r2Contract'
+import type { R2Meta, SummaryProgramme } from './r2Contract'
 import { isSnapshotChannelId } from './r2Contract'
 import type { Category, Channel, EpgProgram, Stream } from './types'
 
@@ -186,4 +186,20 @@ export async function fetchEpg(channelId: string, generation: number): Promise<E
     if (programs) return programs
   }
   return redis.fetchEpgFromRedis(channelId, generation)
+}
+
+/**
+ * The guide summary (ADR-0046) of `generation`, from R2 only. One request; null
+ * when R2 cannot serve it, including whenever the catalogue itself came from Redis.
+ *
+ * Deliberately no Redis fallback, unlike the catalogue and the schedules. The
+ * summary only decorates Home (a category row's "Live now" strip; every card still
+ * reads its own now-playing), while Redis reads are metered and Redis is only
+ * serving at all when R2 is failing. One extra metered read on every page load of
+ * an outage, for a decoration, is the wrong trade (see "Catalogue Read Path & Read
+ * Budget" in CLAUDE.md); `e2e/guide-requests.spec.ts` holds a repeat load to one read.
+ */
+export async function fetchEpgSummary(generation: number): Promise<Map<string, SummaryProgramme[]> | null> {
+  const source = _pin && _pin.generation === generation ? _pin.source : 'r2'
+  return source === 'r2' ? r2.fetchEpgSummaryFromR2(generation) : null
 }

@@ -19,16 +19,18 @@ import {
   decodeCatalogue,
   decodeEpg,
   decodeEpgIds,
+  decodeEpgSummary,
   decodeFastTrack,
   decodePicks,
   epgIdsUrl,
+  epgSummaryUrl,
   epgUrl,
   fastTrackUrl,
   metaUrl,
   parseMeta,
   picksUrl,
 } from './r2Contract'
-import type { DecodedCatalogue, FastTrackEntry, PicksDocument, R2Meta } from './r2Contract'
+import type { DecodedCatalogue, FastTrackEntry, PicksDocument, R2Meta, SummaryProgramme } from './r2Contract'
 
 /** The CDN hostname the snapshot is served from. A build-time setting; never hard-coded. */
 const BASE_URL = (
@@ -240,4 +242,18 @@ export async function fetchEpgFromR2(channelId: string, generation: number): Pro
     if (programs) epgFailuresInARow = 0
     return programs
   })
+}
+
+/**
+ * The guide summary of `generation` (ADR-0046); null when unreadable, including a
+ * generation published before the summary existed (a 404).
+ *
+ * A failure here never trips the cooldown: the summary only decorates Home, and one
+ * slow ~100 KB object must not send every schedule read of the next 30 s to Redis.
+ */
+export async function fetchEpgSummaryFromR2(generation: number): Promise<Map<string, SummaryProgramme[]> | null> {
+  if (!available()) return null
+  return withBudget(R2_EPG_BUDGET_MS, async (ctl) =>
+    decodeEpgSummary(await getJson(epgSummaryUrl(BASE_URL, generation), ctl, () => {})),
+  )
 }

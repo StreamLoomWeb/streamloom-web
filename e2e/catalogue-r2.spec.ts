@@ -9,6 +9,7 @@ import {
   decodeCatalogue,
   decodeEpg,
   decodeEpgIds,
+  decodeEpgSummary,
   epgUrl,
   isSnapshotChannelId,
   parseMeta,
@@ -153,6 +154,27 @@ test.describe('r2-golden.json', () => {
     }
   })
 
+  test('decodes the guide summary (ADR-0046) in agreement with the per-channel pages', () => {
+    const meta = parseMeta(body('meta.json'))
+    if (!meta) throw new Error('golden meta did not parse')
+    const dir = `g${meta.generation}/`
+    const summary = decodeEpgSummary(body(dir + 'epg/summary.json.br'))
+    expect(summary).not.toBeNull()
+    if (!summary) return
+    expect([...summary.keys()]).toEqual(decodeEpgIds(body(dir + 'epg/ids.json.br')))
+    for (const [id, programmes] of summary) {
+      const pages = decodeEpg(body(dir + `epg/${id}.json.br`)) ?? []
+      for (const [startMin, durationMin, title] of programmes) {
+        // Offsets and durations are rounded to the minute (the generation itself need not be).
+        const start = meta.generation + startMin * 60_000
+        const page = pages.find((p) => Math.abs(Date.parse(p.start_time) - start) <= 30_000)
+        expect(page?.title).toBe(title)
+        const duration = Date.parse(page!.end_time) - Date.parse(page!.start_time)
+        expect(Math.abs(duration - durationMin * 60_000)).toBeLessThanOrEqual(30_000)
+      }
+    }
+  })
+
   test('keeps the headers the client relies on, and only that contract', () => {
     for (const [key, object] of Object.entries(golden)) {
       if (key === 'catalogue/meta.json') {
@@ -232,6 +254,9 @@ test.describe('R2 first, then Redis', () => {
     expect(r2.count('streams')).toBe(1)
     expect(r2.count('categories')).toBe(1)
     expect(r2.count('epgIds')).toBe(1)
+    // The guide summary (ADR-0046) feeds the category rows' "Live now" strip: one
+    // object for the whole generation, read once the page is idle.
+    expect(r2.count('summary')).toBe(1)
     // Each card's "now playing" badge (useNowPlaying, "Add player mini-guide, now-playing
     // cards and TV mode") reads its own channel's schedule once it is visible (or within
     // useVisible's 200px root margin) — never every channel, only the ones on screen.
@@ -243,13 +268,26 @@ test.describe('R2 first, then Redis', () => {
     // PicksRow reads fast-track.json once on mount (ADR-0043, WO-19), independent of whether
     // picks.json has anything pinned yet.
     expect(r2.count('fastTrack')).toBe(1)
-    const known = ['meta', 'channels', 'streams', 'categories', 'epgIds', 'countries', 'picks', 'fastTrack', 'schedule']
+    const known = ['meta', 'channels', 'streams', 'categories', 'epgIds', 'summary', 'countries', 'picks', 'fastTrack', 'schedule']
     expect(r2.requests.length).toBe(known.reduce((n, kind) => n + r2.count(kind as R2Kind), 0))
     // picks.json and fast-track.json are both 404 until the owner has ever published one —
     // that is the fixture's normal state, not a failure.
     const alwaysFresh: R2Kind[] = ['picks', 'fastTrack']
     expect(r2.requests.filter((r) => !alwaysFresh.includes(r.kind)).every((r) => r.status === 200)).toBe(true)
     expect(redis.requests.length).toBe(0)
+  })
+
+  test('a category row names what is live now, from the one guide summary object', async ({ page, context }) => {
+    await installUpstashMock(context)
+    await page.goto('/')
+    await waitForChannels(page)
+    const live = page.locator('.category-row__live').first()
+    await expect(live).toBeVisible({ timeout: 30_000 })
+    // scheduleFor's programmes are hourly from four hours back, so "Show 4" is on air.
+    await expect(live.locator('.category-row__live-item').first()).toContainText('Show 4')
+    await expect(live.locator('.category-row__live-item')).toHaveCount(3)
+    await expect(live.locator('.category-row__live-more')).toBeVisible()
+    expect(r2.count('summary')).toBe(1)
   })
 
   test('the browser decodes the brotli objects itself', async ({ page, context }) => {
@@ -338,6 +376,10 @@ test.describe('R2 first, then Redis', () => {
     expect(redis.count('channels')).toBe(6)
     expect(redis.count('streams')).toBe(9)
     expect(redis.count('categories')).toBe(1)
+    // The guide summary is R2-only: a Redis-served catalogue has no "Live now" strip
+    // and spends no metered read on it.
+    expect(r2.count('summary')).toBe(0)
+    await expect(page.locator('.category-row__live')).toHaveCount(0)
   })
 
   test('R2 answers 503: falls through to Redis', async ({ page, context }) => {

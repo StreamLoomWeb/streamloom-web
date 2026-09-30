@@ -216,6 +216,30 @@ effect on production until it is added in the dashboard as well, and adding
 - **Resume line** (`ResumeLine.tsx`, `sl_last_watch_v1`): cold start within 6 h, one dismissible line, never autoplays.
 - Telemetry for these is deliberately not added: any new event needs the backend contract updated first (port `telemetryContract.ts` + golden fixture in one commit).
 
+### 8. Category rows, "Live now" and session affinity (Genre-Based Discovery study, recs. 1 & 2)
+- **Rule**: category rows come only from the catalogue's own `channel_categories` and
+  `categories.json.br` (the iptv-org vocabulary the backend publishes). No client-side genre
+  rules, keyword guessing or renamed buckets: the taxonomy is the shared contract, as on Android.
+- **"Live now" strip**: each category row names up to three programmes on air (`CategoryRow`'s
+  `live` prop), joined client-side from `epg/summary.json.br` (backend ADR-0046:
+  `[channelId, [[startOffsetMin, durationMin, title], …]]`, offsets from the generation).
+  `r2Contract.decodeEpgSummary` drops a malformed row alone (mirrors the app's `GuideSummary.kt`);
+  `util/onNow.ts` does the join. `hooks/useEpgSummary.ts` reads it once per generation, at idle,
+  only after the pointer confirms it is the live generation (a return visit's stale stored
+  generation is never fetched). The cards themselves are never reordered.
+- **Rule**: the summary is **R2-only**. When the catalogue came from Redis the strip is simply
+  absent: a metered read on every page load of an R2 outage, for a decoration, is the wrong
+  trade. `e2e/guide-requests.spec.ts` holds a Redis repeat load to one read, and
+  `catalogue-r2.spec.ts`'s "R2 unreachable" test asserts no summary request and no strip. Chips reuse the
+  card's open path (`hooks/useOpenChannel.ts`); D-pad users reach the same channels via the cards.
+- **Session affinity** (`useSessionAffinity`, `sl_session_affinity_v1`, **sessionStorage only**,
+  ADR-0005): bumped once per channel played, in `VideoPlayer` next to `addRecent`. It reorders,
+  never filters: category rows/pills, and each row's "Live now" entries (by the channel's *other*
+  categories, `util/sessionAffinity.ts`). It moves anything only past
+  `AFFINITY_REORDER_THRESHOLD` (2), so one stray click never reshuffles a TV user's rows.
+  `sl_cat_weights_v1` (Surprise me, localStorage) is a separate, older signal; do not merge them.
+- `e2e/on-now.spec.ts` (pure) and `e2e/catalogue-r2.spec.ts` (golden summary + browser strip) are the gate.
+
 ### 3. Keyboard & Smart TV Navigation
 - Navigation uses a single stable listener pattern with `onKeyRef` in `VideoPlayer.tsx` to ensure zero dropped keypresses.
 - Keys:

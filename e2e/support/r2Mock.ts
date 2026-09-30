@@ -35,6 +35,7 @@ export type R2Kind =
   | 'categories'
   | 'countries'
   | 'epgIds'
+  | 'summary'
   | 'schedule'
 
 export interface R2Request {
@@ -121,6 +122,7 @@ function classify(path: string): R2Kind | null {
   const name = m[1]
   if (name === 'channels' || name === 'streams' || name === 'categories' || name === 'countries') return name
   if (name === 'epg/ids') return 'epgIds'
+  if (name === 'epg/summary') return 'summary'
   if (name.startsWith('epg/')) return 'schedule'
   return null
 }
@@ -191,6 +193,20 @@ export function createR2Server(): R2Server {
       case 'categories': return JSON.stringify(data.categories)
       case 'countries': return '[]'
       case 'epgIds': return JSON.stringify(data.epgIds)
+      // The guide summary (backend ADR-0046), derived from the same schedules the
+      // per-channel objects serve, as the worker's summariseEpg does.
+      case 'summary':
+        return JSON.stringify(
+          data.epgIds.map((id) => [
+            id,
+            (scheduleFor(id, options.endedSchedules ?? false) as { title: string; start_time: string; end_time: string }[])
+              .map((p) => {
+                const start = Date.parse(p.start_time)
+                const end = Date.parse(p.end_time)
+                return [Math.round((start - generation) / 60_000), Math.round((end - start) / 60_000), p.title]
+              }),
+          ]),
+        )
       case 'schedule': {
         const id = decodeURIComponent(/\/epg\/(.+)\.json\.br$/.exec(path)![1])
         return data.epgIds.includes(id) ? JSON.stringify(scheduleFor(id, options.endedSchedules ?? false)) : null
