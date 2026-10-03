@@ -23,6 +23,17 @@ export const LOGO_SIZE = 128
 /** Bundled placeholder swapped in when a request genuinely fails. */
 export const FALLBACK_LOGO = channelFallback
 
+/** Public origin of the `channel-icons` bucket. */
+const ICON_CDN = 'https://icons.softarchium.com/'
+
+/**
+ * `<account>.r2.cloudflarestorage.com` is R2's authenticated S3 API endpoint, not a public
+ * host: every unsigned GET answers 400. Catalogue generations have shipped logo URLs built on
+ * it (over half of all channels as of 2026-10-03), which left those cards on the placeholder.
+ * The object key is the same on the public CDN, so such a URL is mapped back onto it.
+ */
+const R2_S3_ENDPOINT = /^https?:\/\/[^/]+\.r2\.cloudflarestorage\.com\/(?:.*\/)?([^/?#]+)$/i
+
 /**
  * Returns the logo URL to render, or null when there is nothing to fetch.
  *
@@ -31,7 +42,9 @@ export const FALLBACK_LOGO = channelFallback
 export function logoUrl(logo: string | null | undefined): string | null {
   if (typeof logo !== 'string') return null
   const trimmed = logo.trim()
-  return trimmed === '' ? null : trimmed
+  if (trimmed === '') return null
+  const s3 = R2_S3_ENDPOINT.exec(trimmed)
+  return s3 ? ICON_CDN + s3[1] : trimmed
 }
 
 /**
