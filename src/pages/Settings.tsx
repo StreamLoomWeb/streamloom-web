@@ -16,6 +16,7 @@ import {
   onStreamStateChange,
 } from '../util/stream'
 import { isOptedOut, setOptedOut } from '../telemetry/telemetry'
+import { LICENCES, DESIGNER_URL, REPORT_CHANNEL_HREF } from '../util/licences'
 import './Settings.css'
 
 export function Settings() {
@@ -26,6 +27,7 @@ export function Settings() {
   })
   const [autoSkip, setAutoSkip] = useState(() => isAutoSkipEnabled())
   const [hideBroken, setHideBroken] = useState(() => isHideBrokenStreamsEnabled())
+  const [showLicences, setShowLicences] = useState(false)
   const [shareStats, setShareStats] = useState(() => !isOptedOut())
   const [brokenCount, setBrokenCount] = useState(() => getBrokenCount())
   const [hiddenIds, setHiddenIds] = useState(() => [...getHiddenSet()])
@@ -398,7 +400,6 @@ export function Settings() {
           </div>
         </section>
 
-        {/* About Section */}
         {/* Privacy & usage statistics (ADR-0032, ADR-0047) */}
         <section className="settings-card glass" data-testid="privacy-card">
           <div className="settings-card__header">
@@ -477,27 +478,66 @@ export function Settings() {
             </div>
           </div>
           <div className="settings-card__body">
-            <div className="about-details">
-              <p style={{ fontSize: '1.05rem' }}>
-                <strong>Author:</strong>{' '}
-                <a
-                  href="https://www.linkedin.com/in/surajchavda/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    color: 'var(--accent)',
-                    fontWeight: 700,
-                    textDecoration: 'underline',
-                    textUnderlineOffset: '3px',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                  }}
-                >
-                  Suraj Chavda ↗
-                </a>
-              </p>
+            <div className="settings-item">
+              <div className="settings-item__info">
+                <strong>Version</strong>
+                <span>{__APP_VERSION__}</span>
+              </div>
             </div>
+            <div className="settings-item">
+              <div className="settings-item__info">
+                <strong>Developer</strong>
+                <span>Created and owned entirely by Soft Archium</span>
+              </div>
+            </div>
+            <div className="settings-item">
+              <div className="settings-item__info">
+                <strong>Designer</strong>
+                <span>
+                  Designed by{' '}
+                  <a
+                    href={DESIGNER_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="privacy-link"
+                  >
+                    Suraj Chavda ↗
+                  </a>
+                </span>
+              </div>
+            </div>
+            <div className="settings-item">
+              <div className="settings-item__info">
+                <strong>Report a Channel</strong>
+                <span>Tell us about a channel that is broken, wrong or should not be listed</span>
+              </div>
+              <a href={REPORT_CHANNEL_HREF} className="privacy-link">
+                Email us
+              </a>
+            </div>
+            <div className="settings-item">
+              <div className="settings-item__info">
+                <strong>Open-Source Licences</strong>
+                <span>The libraries StreamLoom is built with</span>
+              </div>
+              <button
+                type="button"
+                className="settings-btn"
+                aria-expanded={showLicences}
+                onClick={() => setShowLicences((v) => !v)}
+              >
+                {showLicences ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            {showLicences &&
+              LICENCES.map((l) => (
+                <div className="settings-item" key={l.name}>
+                  <div className="settings-item__info">
+                    <strong>{l.name}</strong>
+                    <span>{l.licence}</span>
+                  </div>
+                </div>
+              ))}
           </div>
         </section>
       </div>
