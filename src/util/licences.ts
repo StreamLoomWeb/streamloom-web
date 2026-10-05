@@ -12,7 +12,6 @@ export const LICENCES: readonly Licence[] = [
 ]
 
 export const SUPPORT_EMAIL = 'support@softarchium.com'
-export const DESIGNER_URL = 'https://www.linkedin.com/in/surajchavda/'
 
 /** The same subject and body template the app's Report a Channel row opens. */
 export const REPORT_CHANNEL_HREF =

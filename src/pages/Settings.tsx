@@ -16,7 +16,7 @@ import {
   onStreamStateChange,
 } from '../util/stream'
 import { isOptedOut, setOptedOut } from '../telemetry/telemetry'
-import { LICENCES, DESIGNER_URL, REPORT_CHANNEL_HREF } from '../util/licences'
+import { LICENCES, REPORT_CHANNEL_HREF } from '../util/licences'
 import './Settings.css'
 
 export function Settings() {
@@ -482,28 +482,6 @@ export function Settings() {
               <div className="settings-item__info">
                 <strong>Version</strong>
                 <span>{__APP_VERSION__}</span>
-              </div>
-            </div>
-            <div className="settings-item">
-              <div className="settings-item__info">
-                <strong>Developer</strong>
-                <span>Created and owned entirely by Soft Archium</span>
-              </div>
-            </div>
-            <div className="settings-item">
-              <div className="settings-item__info">
-                <strong>Designer</strong>
-                <span>
-                  Designed by{' '}
-                  <a
-                    href={DESIGNER_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="privacy-link"
-                  >
-                    Suraj Chavda ↗
-                  </a>
-                </span>
               </div>
             </div>
             <div className="settings-item">
