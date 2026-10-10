@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { fetchCatalogueFromR2, fetchR2Meta } from '../api/r2'
 import { PICKS_SCHEMA } from '../api/r2Contract'
 import type { PickGroup, PicksDocument } from '../api/r2Contract'
+import { CODE_LENGTH, isWellFormedCode, sanitizeCodeInput } from '../util/unlock'
 import './Admin.css'
 
 /**
@@ -77,6 +78,9 @@ interface CustomChannelDraft {
 const MAX_CUSTOM_CHANNELS = 50
 const MAX_CUSTOM_NAME_CHARS = 100
 
+/** Same ceiling `_lib/safeChannelsSchema.ts` (`LIMITS.ids`) enforces. */
+const MAX_SAFE_CHANNELS = 2000
+
 const newLocalKey = (): string =>
   typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `local-${Date.now()}-${Math.random()}`
 
@@ -133,6 +137,23 @@ export function Admin() {
   const [newStreamUrl, setNewStreamUrl] = useState('')
   const [newIconUrl, setNewIconUrl] = useState('')
   const [newCountry, setNewCountry] = useState('')
+
+  // The safe-catalogue editor (ADR-0059): a plain list of channel ids, one per line, same
+  // load/save/If-Match posture as custom channels above.
+  const [safeIdsText, setSafeIdsText] = useState('')
+  const [safeEtag, setSafeEtag] = useState<string | null>(null)
+  const [safeDirty, setSafeDirty] = useState(false)
+  const [safeLoadError, setSafeLoadError] = useState<string | null>(null)
+  const [safeStatus, setSafeStatus] = useState('')
+  const [safeErrors, setSafeErrors] = useState<string[]>([])
+  const [safeSaving, setSafeSaving] = useState(false)
+
+  // The unlock-code generator (ADR-0060): the admin types in the client code they were given
+  // and gets back the matching unlock code to read back. Nothing here is stored.
+  const [unlockClientInput, setUnlockClientInput] = useState('')
+  const [unlockCode, setUnlockCode] = useState<string | null>(null)
+  const [unlockGenerating, setUnlockGenerating] = useState(false)
+  const [unlockError, setUnlockError] = useState<string | null>(null)
 
   const [targetGroup, setTargetGroup] = useState(0)
   const [newGroupTitle, setNewGroupTitle] = useState('')
@@ -428,6 +449,119 @@ export function Admin() {
       setCustomSaving(false)
     }
   }, [customChannels, customEtag])
+
+  // The safe-catalogue document (ADR-0059), loaded on the same gate as custom channels above.
+  const loadSafeChannels = useCallback(async () => {
+    try {
+      const res = await fetch('/api/picks/safe-channels', {
+        credentials: 'same-origin',
+        headers: { accept: 'application/json' },
+      })
+      if (!res.ok) {
+        setSafeLoadError(`Safe catalogue could not be loaded (${res.status}).`)
+        return
+      }
+      const body = (await res.json()) as { ids: string[]; etag: string | null }
+      setSafeIdsText(body.ids.join('\n'))
+      setSafeEtag(body.etag)
+      setSafeLoadError(null)
+      setSafeDirty(false)
+    } catch {
+      setSafeLoadError('Safe catalogue could not be reached.')
+    }
+  }, [])
+
+  useEffect(() => {
+    if (phase !== 'ready') return
+    void Promise.resolve().then(loadSafeChannels)
+  }, [phase, loadSafeChannels])
+
+  const saveSafeChannels = useCallback(async () => {
+    setSafeSaving(true)
+    setSafeErrors([])
+    setSafeStatus('Saving…')
+    try {
+      const ids = safeIdsText
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0)
+      const res = await fetch('/api/picks/safe-channels', {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json',
+          ...(safeEtag ? { 'if-match': safeEtag } : {}),
+        },
+        body: JSON.stringify({ ids }),
+      })
+      const payload = (await res.json().catch(() => null)) as Record<string, unknown> | null
+
+      if (res.status === 412) {
+        setSafeErrors([
+          String(payload?.detail ?? 'Someone else saved a newer copy.') +
+            ' The newer copy has been loaded; re-apply your changes and save again.',
+        ])
+        setSafeIdsText(((payload?.ids as string[] | undefined) ?? []).join('\n'))
+        setSafeEtag((payload?.etag as string | null) ?? null)
+        setSafeStatus('Not saved: a newer copy was loaded.')
+        return
+      }
+      if (res.status === 401 || res.status === 403) {
+        setPhase('unauthorised')
+        return
+      }
+      if (!res.ok) {
+        const list = Array.isArray(payload?.errors) ? (payload.errors as string[]) : []
+        setSafeErrors(list.length > 0 ? list : [String(payload?.detail ?? `The save failed (${res.status}).`)])
+        setSafeStatus('Not saved.')
+        return
+      }
+
+      setSafeIdsText(((payload?.ids as string[] | undefined) ?? []).join('\n'))
+      setSafeEtag((payload?.etag as string) ?? null)
+      setSafeDirty(false)
+      setSafeStatus(`Saved at ${String(payload?.updatedAt ?? 'now')}.`)
+    } catch {
+      setSafeErrors(['The save could not be sent.'])
+      setSafeStatus('Not saved.')
+    } finally {
+      setSafeSaving(false)
+    }
+  }, [safeIdsText, safeEtag])
+
+  // The unlock-code generator (ADR-0060): pure, stateless on the server, so there is nothing
+  // to load — only an input and a generate action.
+  const sanitizedUnlockClient = useMemo(() => sanitizeCodeInput(unlockClientInput), [unlockClientInput])
+
+  const generateUnlockCode = useCallback(async () => {
+    if (!isWellFormedCode(sanitizedUnlockClient)) return
+    setUnlockGenerating(true)
+    setUnlockError(null)
+    setUnlockCode(null)
+    try {
+      const res = await fetch('/api/picks/unlock-generate', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        body: JSON.stringify({ clientCode: sanitizedUnlockClient }),
+      })
+      const payload = (await res.json().catch(() => null)) as Record<string, unknown> | null
+      if (res.status === 401 || res.status === 403) {
+        setPhase('unauthorised')
+        return
+      }
+      if (!res.ok) {
+        setUnlockError(String(payload?.detail ?? `Could not generate a code (${res.status}).`))
+        return
+      }
+      setUnlockCode(String(payload?.unlockCode ?? ''))
+    } catch {
+      setUnlockError('The request could not be sent.')
+    } finally {
+      setUnlockGenerating(false)
+    }
+  }, [sanitizedUnlockClient])
 
   const totalItems = useMemo(
     () => groups.reduce((n, group) => n + group.items.length, 0),
@@ -1137,6 +1271,108 @@ export function Admin() {
             Add channel
           </button>
         </div>
+      </section>
+
+      <section className="admin__panel" aria-labelledby="admin-safe-heading">
+        <h2 id="admin-safe-heading">Safe catalogue</h2>
+        <p className="admin__hint">
+          Channel ids curated as legally safe (one per line). Visitors see only these by default;
+          the rest are reachable only after the full-catalogue unlock below. Up to {MAX_SAFE_CHANNELS}.
+        </p>
+
+        {safeLoadError && <p className="admin__problem">{safeLoadError}</p>}
+
+        {safeStatus && (
+          <p className="admin__status" role="status" aria-live="polite">
+            {safeStatus}
+          </p>
+        )}
+        {safeErrors.length > 0 && (
+          <ul className="admin__errors" aria-label="Problems">
+            {safeErrors.map((message) => (
+              <li key={message}>{message}</li>
+            ))}
+          </ul>
+        )}
+
+        <textarea
+          className="admin__textarea"
+          value={safeIdsText}
+          onChange={(e) => {
+            setSafeIdsText(e.target.value)
+            setSafeDirty(true)
+            setSafeStatus('')
+          }}
+          placeholder="one-channel-id-per-line"
+          rows={10}
+          spellCheck={false}
+        />
+
+        <div className="admin__actions">
+          <button
+            className="admin__btn admin__btn--primary"
+            onClick={() => void saveSafeChannels()}
+            disabled={safeSaving || !safeDirty}
+          >
+            {safeSaving ? 'Saving…' : 'Save safe catalogue'}
+          </button>
+          <button
+            className="admin__btn"
+            onClick={() => void loadSafeChannels()}
+            disabled={safeSaving}
+          >
+            Discard and reload
+          </button>
+          {safeDirty && <span className="admin__dirty">Unsaved changes</span>}
+        </div>
+      </section>
+
+      <section className="admin__panel" aria-labelledby="admin-unlock-heading">
+        <h2 id="admin-unlock-heading">Unlock codes</h2>
+        <p className="admin__hint">
+          A visitor reads you their {CODE_LENGTH}-character client code over phone or chat. Enter
+          it here and read the unlock code back to them — it is derived, not stored, so
+          generating it again for the same client code always gives the same answer.
+        </p>
+
+        {unlockError && (
+          <ul className="admin__errors" aria-label="Problems">
+            <li>{unlockError}</li>
+          </ul>
+        )}
+
+        <div className="admin__field-row">
+          <label className="admin__label" htmlFor="admin-unlock-client">
+            Client code
+          </label>
+          <input
+            id="admin-unlock-client"
+            className="admin__input admin__input--short"
+            value={unlockClientInput}
+            maxLength={CODE_LENGTH}
+            placeholder={'A'.repeat(CODE_LENGTH)}
+            autoComplete="off"
+            spellCheck={false}
+            onChange={(e) => {
+              setUnlockClientInput(sanitizeCodeInput(e.target.value))
+              setUnlockCode(null)
+              setUnlockError(null)
+            }}
+          />
+          <button
+            className="admin__btn admin__btn--primary"
+            onClick={() => void generateUnlockCode()}
+            disabled={unlockGenerating || !isWellFormedCode(sanitizedUnlockClient)}
+          >
+            {unlockGenerating ? 'Generating…' : 'Generate'}
+          </button>
+        </div>
+
+        {unlockCode && (
+          <p className="admin__unlock-result">
+            Unlock code: <code>{unlockCode}</code>
+          </p>
+        )}
       </section>
     </main>
   )

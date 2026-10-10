@@ -25,6 +25,12 @@ export interface CatalogueOptions {
    * ch3 a raw `.mpegts`, ch4 `.mpd` only, ch5 `rtmp://` only.
    */
   engineChannels?: boolean
+  /**
+   * Channels at the end of the list published with `safe: false` (ADR-0059), for exercising
+   * the default-safe filter itself (safe-catalogue-filter.spec.ts). Every other test leaves
+   * this at 0, so its fixture stays fully `safe` and the filter is a no-op for it.
+   */
+  unsafeChannels?: number
 }
 
 export function scheduleFor(channelId: string, ended: boolean): unknown[] {
@@ -47,6 +53,7 @@ export function syntheticCatalogue(options: CatalogueOptions = {}) {
   const guideChannels = options.guideChannels ?? 526
   const totalChannels = options.totalChannels ?? 600
 
+  const unsafeChannels = options.unsafeChannels ?? 0
   const channels = Array.from({ length: totalChannels }, (_, i) => ({
     id: `ch${i}.xx`,
     name: `Channel ${i}`,
@@ -55,6 +62,11 @@ export function syntheticCatalogue(options: CatalogueOptions = {}) {
     is_active: true,
     channel_categories: [{ category_id: 'news' }],
     languages: ['eng'],
+    // Every unrelated test exercises a catalogue that is fully admin-cleared, same posture as
+    // `is_active: true` above — the default-safe filter (ADR-0059/0060) is covered on its own
+    // in safe-catalogue-filter.spec.ts via `unsafeChannels`, not by leaving the rest of the
+    // suite to stumble into it.
+    safe: i < totalChannels - unsafeChannels,
   }))
   // Every second channel has a backup candidate: 900 streams, which at 100 a page
   // gives the nine stream pages production publishes today.
