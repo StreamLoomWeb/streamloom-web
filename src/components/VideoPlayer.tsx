@@ -92,6 +92,21 @@ const NATIVE_HLS_START_CAP_MS = 45000
 const STALL_IDLE_MS = 8000
 /** After playback: longest a stall may last while bytes trickle in. */
 const STALL_CAP_MS = 20000
+/**
+ * How often the position watchdog samples `video.currentTime` once a frame has rendered.
+ *
+ * The byte watchdog above (`onWaiting`, `lastMediaByteAt`) only arms on the native `waiting`
+ * event and only judges whether bytes are still arriving. A live stream can go the other way:
+ * the native `waiting` event never fires and the buffer keeps filling (a stale manifest the
+ * engine keeps re-requesting, or a decoder that has quietly stopped advancing the playhead)
+ * while the video element still reports `readyState >= 3` and `!paused`. Nothing else here
+ * watches the one thing that actually matters to the viewer — whether the picture is moving —
+ * so this polls it directly instead of waiting for an event that this failure never sends.
+ */
+const POSITION_WATCHDOG_INTERVAL_MS = 5000
+/** Consecutive no-progress samples before the position watchdog gives up on this attempt — three
+ * samples is the same ~15 s order as `STALL_IDLE_MS` gives a stream that is honestly stalling. */
+const POSITION_WATCHDOG_STALE_SAMPLES = 3
 
 /** Why each candidate of one channel failed, so exhaustion can be judged as a whole. */
 interface FailureEvidence {
@@ -209,6 +224,14 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
   const hasPlayedSuccessfully = useRef(false)
   /** When the last media byte arrived; playlist refreshes do not count. */
   const lastMediaByteAt = useRef(0)
+  /** The position watchdog's own state, reset on pause/resume so a deliberate pause — or the
+   * rebuffer right after resuming — is never counted as a stall. */
+  const positionWatchdogLastPosition = useRef(-1)
+  const positionWatchdogStaleSamples = useRef(0)
+  const resetPositionWatchdog = useCallback(() => {
+    positionWatchdogLastPosition.current = -1
+    positionWatchdogStaleSamples.current = 0
+  }, [])
   const switchChannelCleanlyRef = useRef<(target: EnrichedChannel) => void>(() => {})
   /** Set when a fatal error struck while the browser reported no connection. */
   const waitingForNetworkRef = useRef(false)
@@ -977,6 +1000,36 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
   useEffect(() => {
     failoverToNextAttemptRef.current = failoverToNextAttempt
   }, [failoverToNextAttempt])
+
+  // Runs for the player's whole lifetime, independent of channel/stream switches: those reset
+  // `hasPlayedSuccessfully` themselves, which is what re-arms this after a failover.
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      const video = videoRef.current
+      // readyState < HAVE_FUTURE_DATA (3) is an ordinary, already-tolerated rebuffer: the
+      // `onWaiting` watchdog above is already judging it against its own, longer-tuned budget
+      // (STALL_IDLE_MS/STALL_CAP_MS), and this watchdog firing on top of it would fail a stream
+      // over before that budget's grace has even run out. This one exists for the other case —
+      // readyState says there is enough buffered to play smoothly, `paused` is false, and the
+      // playhead still is not moving — which `onWaiting` never fires for at all.
+      if (!video || !hasPlayedSuccessfully.current || video.paused || video.ended || video.readyState < 3) {
+        resetPositionWatchdog()
+        return
+      }
+      const position = video.currentTime
+      if (position > positionWatchdogLastPosition.current) {
+        positionWatchdogLastPosition.current = position
+        positionWatchdogStaleSamples.current = 0
+        return
+      }
+      positionWatchdogLastPosition.current = position
+      positionWatchdogStaleSamples.current += 1
+      if (positionWatchdogStaleSamples.current < POSITION_WATCHDOG_STALE_SAMPLES) return
+      positionWatchdogStaleSamples.current = 0
+      failoverToNextAttemptRef.current('inconclusive')
+    }, POSITION_WATCHDOG_INTERVAL_MS)
+    return () => window.clearInterval(interval)
+  }, [resetPositionWatchdog])
 
   const handleNextStreamCandidate = useCallback(() => {
     cancelCountdown()
@@ -1948,6 +2001,7 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
             window.clearTimeout(stallTimer.current)
             stallTimer.current = null
           }
+          resetPositionWatchdog()
         }}
         onPlay={() => setIsPlaying(true)}
         onPlaying={() => {
@@ -1955,6 +2009,11 @@ export function VideoPlayer({ channel, allChannels, returnTo = '/', epgChannelId
             window.clearTimeout(stallTimer.current)
             stallTimer.current = null
           }
+          // A pause/resume, or the rebuffer right after one, is not a stall: the playhead was
+          // always going to sit still while paused, and `onPlaying` (not `onPlay`, which fires
+          // the instant the viewer's resume is accepted, before the buffer has caught up) is
+          // this file's own signal that frames are actually moving again.
+          resetPositionWatchdog()
           if (failoverTimer.current) {
             window.clearTimeout(failoverTimer.current)
             failoverTimer.current = null
