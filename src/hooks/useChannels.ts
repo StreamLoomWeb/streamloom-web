@@ -34,6 +34,7 @@ import {
   onStreamStateChange,
   unmarkStreamBroken,
 } from '../util/stream'
+import { isUnlocked } from '../util/unlock'
 
 export type { EnrichedChannel }
 
@@ -512,6 +513,16 @@ export function useChannels(): UseChannelsResult {
   const refreshEpg = useCallback(() => refreshEpgIds(), [])
 
   const raw = _channels ?? NO_CHANNELS
+  // The default-safe filter (ADR-0059/0060): until this device has redeemed an unlock code,
+  // every list derived from the catalogue — including `allChannels`, so the author's picks row
+  // and Settings' hidden-channel names respect it too — is narrowed to the admin-curated
+  // `safe` subset. Applied ahead of the hidden/broken filter below so unlocking changes what a
+  // visitor can see without touching their own hide/broken choices.
+  const unlocked = isUnlocked()
+  const safeBase = useMemo(
+    () => (unlocked ? raw : raw.filter((c) => c.safe === true)),
+    [raw, unlocked]
+  )
   const hideBroken = isHideBrokenStreamsEnabled()
   const brokenSet = hideBroken ? getBrokenSet() : null
   const hiddenSet = getHiddenSet()
@@ -520,14 +531,14 @@ export function useChannels(): UseChannelsResult {
   const filtered = useMemo(
     () =>
       (brokenSet && brokenSet.size > 0) || hiddenSet.size > 0
-        ? raw.filter((c) => !hiddenSet.has(c.id) && !brokenSet?.has(c.id))
-        : raw,
-    [raw, brokenSet, hiddenSet]
+        ? safeBase.filter((c) => !hiddenSet.has(c.id) && !brokenSet?.has(c.id))
+        : safeBase,
+    [safeBase, brokenSet, hiddenSet]
   )
 
   return {
     channels: filtered,
-    allChannels: raw,
+    allChannels: safeBase,
     categories: _categories ?? [],
     epgChannelIds: _epgIds ?? new Set(),
     loading: _loading,

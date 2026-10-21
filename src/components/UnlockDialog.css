@@ -1,0 +1,148 @@
+/*
+ * The full-catalogue unlock dialog. Same native <dialog> + glass pattern as ShortcutsHelp.css,
+ * following the site's theme variables so it tracks light/dark with the rest of the app.
+ */
+
+.unlock-dialog {
+  margin: auto;
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(90dvh, 560px);
+  padding: 0;
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 16px);
+  background: var(--bg-card);
+  overflow: hidden;
+}
+
+.unlock-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.unlock-dialog::backdrop {
+  background: rgba(6, 7, 9, 0.7);
+}
+
+.unlock-dialog__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.unlock-dialog__head h2 {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.unlock-dialog__head button {
+  min-width: 40px;
+  min-height: 40px;
+  color: var(--text-secondary);
+  font-size: 1.1rem;
+}
+
+.unlock-dialog__body {
+  overflow-y: auto;
+  padding: 16px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.unlock-dialog__hint {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.unlock-dialog__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.unlock-dialog__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.unlock-dialog__code-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.unlock-dialog__code {
+  flex: 1;
+  padding: 12px 14px;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-align: center;
+  color: var(--text-primary);
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.unlock-dialog__copy {
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.unlock-dialog__copy:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-hover);
+}
+
+.unlock-dialog__input {
+  padding: 12px 14px;
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-align: center;
+  color: var(--text-primary);
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.unlock-dialog__input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.unlock-dialog__error {
+  font-size: 13px;
+  color: #d64545;
+}
+
+.unlock-dialog__submit {
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.unlock-dialog__submit:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.unlock-dialog__submit:hover:not(:disabled) {
+  filter: brightness(1.05);
+}

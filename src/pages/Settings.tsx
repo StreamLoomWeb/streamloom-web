@@ -1,5 +1,5 @@
 import { SHORTCUT_GROUPS, openShortcuts } from '../util/shortcutList'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useChannels, clearCatalogueCache } from '../hooks/useChannels'
 import { useTheme } from '../hooks/useTheme'
 import {
@@ -17,7 +17,12 @@ import {
 } from '../util/stream'
 import { isOptedOut, setOptedOut } from '../telemetry/telemetry'
 import { LICENCES, REPORT_CHANNEL_HREF } from '../util/licences'
+import { UnlockDialog } from '../components/UnlockDialog'
 import './Settings.css'
+
+/** Taps on the version string that open the unlock dialog, and how long a pause resets the count. */
+const UNLOCK_TAP_COUNT = 7
+const UNLOCK_TAP_TIMEOUT_MS = 2000
 
 export function Settings() {
   const { channels, allChannels, refresh } = useChannels()
@@ -37,6 +42,14 @@ export function Settings() {
   const [pendingConfirm, setPendingConfirm] = useState<'cache' | 'recent' | null>(null)
   const [clearedBrokenNotice, setClearedBrokenNotice] = useState(false)
   const [clearedRecentNotice, setClearedRecentNotice] = useState(false)
+  // The hidden unlock dialog (ADR-0059/0060): tapping the version string this many times in a
+  // row, without pausing longer than the timeout, opens it. The tap count and last-tap time are
+  // refs, not state — nothing on screen depends on them, so a render is never needed for a tap
+  // that does not reach the threshold.
+  const [unlockOpen, setUnlockOpen] = useState(false)
+  const [unlockKey, setUnlockKey] = useState(0)
+  const versionTapsRef = useRef(0)
+  const lastTapRef = useRef(0)
 
   useEffect(() => {
     return onStreamStateChange(() => {
@@ -52,6 +65,20 @@ export function Settings() {
     const wanted = new Set(hiddenIds)
     return new Map((allChannels ?? []).filter((c) => wanted.has(c.id)).map((c) => [c.id, c.name]))
   }, [allChannels, hiddenIds])
+
+  const handleVersionTap = () => {
+    const now = Date.now()
+    const withinWindow = now - lastTapRef.current <= UNLOCK_TAP_TIMEOUT_MS
+    lastTapRef.current = now
+    versionTapsRef.current = (withinWindow ? versionTapsRef.current : 0) + 1
+    if (versionTapsRef.current >= UNLOCK_TAP_COUNT) {
+      versionTapsRef.current = 0
+      // A fresh key each time, so the dialog remounts with a clean input/error state instead
+      // of needing an effect to reset one that persisted from a previous attempt.
+      setUnlockKey((k) => k + 1)
+      setUnlockOpen(true)
+    }
+  }
 
   const handleLowLatencyChange = (enabled: boolean) => {
     setLowLatency(enabled)
@@ -481,7 +508,19 @@ export function Settings() {
             <div className="settings-item">
               <div className="settings-item__info">
                 <strong>Version</strong>
-                <span>{__APP_VERSION__}</span>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={handleVersionTap}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      handleVersionTap()
+                    }
+                  }}
+                >
+                  {__APP_VERSION__}
+                </span>
               </div>
             </div>
             <div className="settings-item">
@@ -519,6 +558,7 @@ export function Settings() {
           </div>
         </section>
       </div>
+      <UnlockDialog key={unlockKey} open={unlockOpen} onClose={() => setUnlockOpen(false)} />
     </div>
   )
 }

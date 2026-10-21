@@ -16,6 +16,13 @@ export interface Channel {
   channel_categories: { category_id: string }[]
   /** ISO 639-2 codes published by the sync worker (e.g. [eng, hin]). */
   languages?: string[]
+  /**
+   * True when the admin has curated this channel as legally safe (streamloom-backend
+   * ADR-0059). Additive on the published DTO; absent or false on everything else, which today
+   * is almost everything since outreach has only just started. The client shows only `safe`
+   * channels until the full-catalogue unlock (ADR-0060) is redeemed — see `src/util/unlock.ts`.
+   */
+  safe?: boolean
 }
 
 export interface Stream {

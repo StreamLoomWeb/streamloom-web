@@ -264,7 +264,9 @@ export function searchIndexFor(catalogue: readonly EnrichedChannel[]): SearchInd
  * Returns the ids in `catalogue` matching `normalizedQuery`, or `null` when the
  * query is empty (meaning "no restriction"). Always returns a `Set` (possibly
  * empty) for non-empty queries so callers can `has(id)` without null-checks.
- * `catalogue` is the full, unfiltered channel list (`useChannels().allChannels`).
+ * `catalogue` is `useChannels().allChannels`: unfiltered by the user's own hidden/broken
+ * choices, but — like every list that hook returns — already narrowed to the admin-curated
+ * `safe` subset until the full-catalogue unlock (ADR-0059/0060) is redeemed.
  */
 export function computeMatchSet(normalizedQuery: string, catalogue: readonly EnrichedChannel[]): Set<string> | null {
   if (!normalizedQuery) return null

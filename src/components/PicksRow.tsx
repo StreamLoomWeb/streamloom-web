@@ -18,7 +18,11 @@ import './PicksRow.css'
  * it never consults `getBrokenSet`, `getHiddenSet` or the settings that drive
  * them. The stream-failure rules of WO-11 are untouched: a pinned channel that
  * fails still records its failure and still marks itself broken; the mark simply
- * does not remove it from this row.
+ * does not remove it from this row. The one thing that still can remove a pin from view is
+ * the default-safe catalogue filter (ADR-0059/0060): `allChannels` is the list before the
+ * hidden/broken filters, but it is already narrowed to `safe` channels until the
+ * full-catalogue unlock is redeemed, same as every other list `useChannels` returns — a pin
+ * is an editorial choice, not a legal clearance, so it does not bypass that gate.
  *
  * A pin whose channel has no stream is shown, greyed, labelled "No stream
  * available" — it is what the author asked for and it is honest about the state.
