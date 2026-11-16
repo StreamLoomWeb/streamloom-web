@@ -124,3 +124,38 @@ test.describe('the unlock dialog', () => {
     await expect(page.getByRole('button', { name: 'Play Channel 4', exact: true })).toBeVisible({ timeout: 60_000 })
   })
 })
+
+test.describe('the live safe list overlay', () => {
+  const overlay = (page: Page, status: number, ids: string[] = []) =>
+    page.route('**/catalogue/safe-channels.json', (route) =>
+      status === 200
+        ? route.fulfill({ status, contentType: 'application/json', body: JSON.stringify({ schema: 1, updatedAt: 'x', ids }) })
+        : route.fulfill({ status, body: '' }),
+    )
+  const play = (page: Page, n: number) => page.getByRole('button', { name: `Play Channel ${n}`, exact: true })
+
+  test('a valid list decides what shows, either way round', async ({ page, context }) => {
+    await installUpstashMock(context, { totalChannels: 5, guideChannels: 5, unsafeChannels: 1 })
+    // Channel 4 is published unsafe and listed; channel 0 is published safe and not listed.
+    await overlay(page, 200, ['ch1.xx', 'ch2.xx', 'ch3.xx', 'ch4.xx'])
+    await page.goto('/')
+    await expect(play(page, 4).first()).toBeVisible({ timeout: 60_000 })
+    await expect(play(page, 0)).toHaveCount(0)
+  })
+
+  test('a 404 keeps the published flags', async ({ page, context }) => {
+    await installUpstashMock(context, { totalChannels: 5, guideChannels: 5, unsafeChannels: 1 })
+    await overlay(page, 404)
+    await openHome(page)
+    await expect(play(page, 4)).toHaveCount(0)
+  })
+
+  test('an unlocked device shows everything whatever the list says', async ({ page, context }) => {
+    await installUpstashMock(context, { totalChannels: 5, guideChannels: 5, unsafeChannels: 1 })
+    await overlay(page, 200, [])
+    await page.addInitScript((key) => localStorage.setItem(key, 'true'), UNLOCKED_KEY)
+    await page.goto('/')
+    await expect(play(page, 4).first()).toBeVisible({ timeout: 60_000 })
+    await expect(play(page, 0).first()).toBeVisible()
+  })
+})

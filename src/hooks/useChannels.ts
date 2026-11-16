@@ -35,6 +35,8 @@ import {
   unmarkStreamBroken,
 } from '../util/stream'
 import { isUnlocked } from '../util/unlock'
+import { fetchSafeChannelsFromR2 } from '../api/r2'
+import { isSafeChannel } from '../api/r2Contract'
 
 export type { EnrichedChannel }
 
@@ -398,8 +400,29 @@ function refreshEpgIds(): Promise<void> {
   return _epgRefresh
 }
 
+/**
+ * The admin's live safe list (ADR-0059), or null when it has not been read: then the `safe`
+ * flags the published catalogue carries decide. A failed read leaves whatever is held, so a
+ * network blip never hides a channel; only a valid document changes the answer.
+ */
+let _safeOverlay: Set<string> | null = null
+let _lastOverlayCheck = Date.now()
+
+let _overlaySeq = 0
+
+async function refreshSafeOverlay() {
+  _lastOverlayCheck = Date.now()
+  const seq = (_overlaySeq += 1)
+  const ids = await fetchSafeChannelsFromR2()
+  // Overlapping reads can finish out of order; only the latest one may answer.
+  if (!ids || seq !== _overlaySeq) return
+  _safeOverlay = ids
+  notify()
+}
+
 // Kick off loading as soon as this module is first imported
 loadData()
+refreshSafeOverlay().catch(() => {})
 
 /**
  * How often the catalogue, schedules and dead-stream list are re-read.
@@ -479,11 +502,30 @@ function startRefreshLoop() {
   _refreshTimer = setInterval(() => {
     invalidateEphemeralCaches()
     loadData(true).catch(() => {})
+    refreshSafeOverlay().catch(() => {})
     revalidateBrokenStreams().catch(() => {})
   }, REFRESH_INTERVAL_MS)
 }
 
 startRefreshLoop()
+
+/**
+ * Re-reads the safe list when the tab comes back into view, at most once a minute, so an admin
+ * save reaches a tab that was left open without waiting for the four-hour refresh. One small
+ * GET; the catalogue itself is not reloaded.
+ */
+const OVERLAY_RECHECK_MS = 60_000
+
+function recheckOverlayWhenVisible() {
+  if (typeof document === 'undefined' || document.visibilityState !== 'visible') return
+  if (Date.now() - _lastOverlayCheck < OVERLAY_RECHECK_MS) return
+  refreshSafeOverlay().catch(() => {})
+}
+
+if (typeof document !== 'undefined' && typeof window !== 'undefined') {
+  document.addEventListener('visibilitychange', recheckOverlayWhenVisible)
+  window.addEventListener('focus', recheckOverlayWhenVisible)
+}
 
 /** Runs `fn` once, as soon as a catalogue is held (now, if one already is). */
 export function afterCatalogue(fn: () => void): () => void {
@@ -508,6 +550,7 @@ export function useChannels(): UseChannelsResult {
   // Clearing the error first shows the loading skeleton, so a manual Retry gives feedback.
   const refresh = useCallback(() => {
     _error = null
+    refreshSafeOverlay().catch(() => {})
     return loadData(true)
   }, [])
   const refreshEpg = useCallback(() => refreshEpgIds(), [])
@@ -519,9 +562,10 @@ export function useChannels(): UseChannelsResult {
   // `safe` subset. Applied ahead of the hidden/broken filter below so unlocking changes what a
   // visitor can see without touching their own hide/broken choices.
   const unlocked = isUnlocked()
+  const overlay = _safeOverlay
   const safeBase = useMemo(
-    () => (unlocked ? raw : raw.filter((c) => c.safe === true)),
-    [raw, unlocked]
+    () => (unlocked ? raw : raw.filter((c) => isSafeChannel(c, overlay))),
+    [raw, unlocked, overlay]
   )
   const hideBroken = isHideBrokenStreamsEnabled()
   const brokenSet = hideBroken ? getBrokenSet() : null

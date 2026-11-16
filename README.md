@@ -458,3 +458,25 @@ check `streamloom-backend`'s Actions tab for a `Fast-track a pick` run within
 seconds. If none appears, the token likely hasn't reached the live deployment
 yet — redeploy and try again before assuming anything else is wrong.
 
+### Safe-list dispatch (`level-safe-tree`)
+
+A successful save of the Safe catalogue list in `/admin` sends one more `repository_dispatch` to
+`streamloom-backend`, event type `level-safe-tree` with no payload, which rebuilds `catalogue/safe/`
+from the live generation and the saved list, so the change reaches the Lite apps in about a minute
+instead of at the next scheduled sync. It is sent on every successful save (the rebuild is idempotent), so saving again retries a failed one.
+
+It reuses `GITHUB_DISPATCH_TOKEN` exactly as the fast-track dispatch does; there is no new secret.
+**The owner must confirm the token's permission covers this event** (the same **Contents: Read and
+write** on `streamloom-backend` that fast-track needs; nothing here has been run against the real
+GitHub API), and that the backend's `level-safe-tree` workflow is deployed. Adding or changing the
+token needs a fresh Production deployment, as above.
+
+The save never fails because of it. The response carries `republish`: `requested` (GitHub accepted
+it), `not-configured` (no token reached this deployment), or `failed` (GitHub refused or timed out). The admin page says "live in about a minute" for the first and
+"will land on the next scheduled sync" for the others.
+
+The web app itself does not wait for the backend: it reads `catalogue/safe-channels.json` and
+treats a channel as safe iff its id is listed (when the read succeeds and the document is valid;
+otherwise the published `safe` flags stand). It re-reads on the normal four-hour refresh and when
+the tab regains focus, at most once a minute.
+

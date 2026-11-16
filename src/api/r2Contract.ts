@@ -102,6 +102,14 @@ export function fastTrackUrl(base: string): string {
   return base + '/catalogue/fast-track.json'
 }
 
+/**
+ * The admin's safe-channels list, read directly so a save shows without waiting for the sync
+ * worker to republish the catalogue (ADR-0059). Generation-independent, plain JSON.
+ */
+export function safeChannelsUrl(base: string): string {
+  return base + '/catalogue/safe-channels.json'
+}
+
 export type BulkObject = 'channels' | 'streams' | 'categories'
 
 export function bulkUrl(base: string, generation: number, name: BulkObject): string {
@@ -385,4 +393,19 @@ export function decodeCatalogue(
     return null
   }
   return { channels, streams, categories }
+}
+
+/**
+ * The ids of a safe-channels document, or null when it is not one this client understands.
+ * An empty list is valid and means nothing is safe; null means "use the published flags".
+ */
+export function decodeSafeChannels(raw: unknown): Set<string> | null {
+  if (!isRecord(raw) || raw.schema !== 1 || !Array.isArray(raw.ids)) return null
+  if (!raw.ids.every((id) => typeof id === 'string')) return null
+  return new Set(raw.ids as string[])
+}
+
+/** A channel is safe iff the overlay lists it; with no overlay, the flag the catalogue carries decides. */
+export function isSafeChannel(channel: { id: string; safe?: boolean }, overlay: ReadonlySet<string> | null): boolean {
+  return overlay ? overlay.has(channel.id) : channel.safe === true
 }

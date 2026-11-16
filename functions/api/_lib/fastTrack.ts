@@ -5,19 +5,23 @@
  * scheduled sync.
  *
  * Deliberately the only thing in this project that holds a GitHub credential, and deliberately
- * the *only* capability that credential has: `repository_dispatch` cannot read anything, write
- * anything in the repository, or trigger any workflow other than the one keyed to
- * `fast-track-pick`. It is not a Supabase or Upstash credential and cannot reach either.
+ * the *only* capability that credential has: `repository_dispatch` cannot read anything or write
+ * anything in the repository; it can only trigger the workflows keyed to `fast-track-pick` and
+ * `level-safe-tree` (the safe-list save, see [dispatchLevelSafeTree]). It is not a Supabase or
+ * Upstash credential and cannot reach either.
  *
- * Never allowed to fail a save. The caller (`handleWrite`) runs this through `context.waitUntil`
- * after the picks write has already succeeded and already returned its response — a dispatch
- * that fails, times out, or the token being unset entirely all mean "this save's picks stay on
- * the identity card a little longer", never "the save did not happen".
+ * Never allowed to fail a save. The picks caller runs [dispatchFastTrack] through
+ * `context.waitUntil` after the write has already succeeded and the response has gone out; the
+ * safe-list caller awaits [dispatchLevelSafeTree] so its response can report the outcome. Either
+ * way a dispatch that fails, times out, or has no token means "this save lands on the next sync",
+ * never "the save did not happen".
  */
 
 const REPO = 'StreamLoomBackEnd/streamloom-backend'
 const DISPATCH_URL = `https://api.github.com/repos/${REPO}/dispatches`
 const EVENT_TYPE = 'fast-track-pick'
+/** Asks the backend to rebuild `catalogue/safe/` from the live generation and the current safe list. No payload. */
+const LEVEL_SAFE_EVENT_TYPE = 'level-safe-tree'
 
 /**
  * The real GitHub API by default; overridable only for the workerd smoke test
@@ -69,8 +73,33 @@ export async function dispatchFastTrack(env: unknown, channelIds: readonly strin
     )
     return
   }
+  await sendDispatch(env, EVENT_TYPE, { channelIds: channelIds.slice(0, MAX_FAST_TRACK_IDS) })
+}
+
+/**
+ * Dispatches `level-safe-tree` (no payload) after a safe-list save, so the cleared tree follows the
+ * admin's edit in about a minute instead of at the next scheduled sync. Same token, same endpoint,
+ * same never-fail-the-save posture as [dispatchFastTrack]; unlike it, the outcome is returned so the
+ * save's response can tell the admin which one happened:
+ *
+ *   'dispatched'      GitHub accepted it (a 2xx)
+ *   'not-configured'  no token visible to this deployment; the next scheduled sync picks the save up
+ *
+ * Rejects on a non-2xx, a network error or a timeout; the caller turns that into 'failed'.
+ */
+export async function dispatchLevelSafeTree(env: unknown): Promise<'dispatched' | 'not-configured'> {
+  if (!fastTrackConfigured(env)) {
+    console.warn(
+      '[picks] level-safe-tree not dispatched: no GITHUB_DISPATCH_TOKEN visible to this deployment. If one is configured in Cloudflare, a fresh Production deployment is needed for it to take effect.',
+    )
+    return 'not-configured'
+  }
+  await sendDispatch(env, LEVEL_SAFE_EVENT_TYPE)
+  return 'dispatched'
+}
+
+async function sendDispatch(env: unknown, eventType: string, clientPayload?: Record<string, unknown>): Promise<void> {
   const token = (env as { GITHUB_DISPATCH_TOKEN: string }).GITHUB_DISPATCH_TOKEN.trim()
-  const ids = channelIds.slice(0, MAX_FAST_TRACK_IDS)
 
   const ctl = new AbortController()
   const timer = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS)
@@ -85,7 +114,7 @@ export async function dispatchFastTrack(env: unknown, channelIds: readonly strin
         'x-github-api-version': '2022-11-28',
         'user-agent': 'streamloom-web-picks-portal',
       },
-      body: JSON.stringify({ event_type: EVENT_TYPE, client_payload: { channelIds: ids } }),
+      body: JSON.stringify({ event_type: eventType, ...(clientPayload ? { client_payload: clientPayload } : {}) }),
     })
     // A successful dispatch is 204 with no body (GitHub's own convention for this endpoint).
     if (!res.ok) throw new Error(`GitHub dispatch refused: ${res.status} ${await res.text().catch(() => '')}`)

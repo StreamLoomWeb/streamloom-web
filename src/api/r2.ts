@@ -22,6 +22,7 @@ import {
   decodeEpgSummary,
   decodeFastTrack,
   decodePicks,
+  decodeSafeChannels,
   epgIdsUrl,
   epgSummaryUrl,
   epgUrl,
@@ -29,6 +30,7 @@ import {
   metaUrl,
   parseMeta,
   picksUrl,
+  safeChannelsUrl,
 } from './r2Contract'
 import type { DecodedCatalogue, FastTrackEntry, PicksDocument, R2Meta, SummaryProgramme } from './r2Contract'
 
@@ -53,6 +55,7 @@ export const R2_CATALOGUE_BUDGET_MS = 8_000
 export const R2_EPG_BUDGET_MS = 6_000
 export const R2_PICKS_BUDGET_MS = 4_000
 export const R2_FAST_TRACK_BUDGET_MS = 4_000
+export const R2_SAFE_CHANNELS_BUDGET_MS = 4_000
 
 /**
  * After a transport failure of `meta.json` or a bulk object R2 is skipped for this
@@ -83,9 +86,10 @@ async function getJson(
   url: string,
   ctl: AbortController,
   onTransportFailure: () => void = markDown,
+  cache?: RequestCache,
 ): Promise<unknown | null> {
   try {
-    const res = await fetch(url, { signal: ctl.signal })
+    const res = await fetch(url, { signal: ctl.signal, ...(cache ? { cache } : {}) })
     if (!res.ok) {
       if (res.status >= 500) onTransportFailure()
       return null
@@ -187,6 +191,18 @@ export async function fetchFastTrackFromR2(): Promise<FastTrackEntry[] | null> {
     })
 
   return fastTrackInFlight
+}
+
+/**
+ * `catalogue/safe-channels.json`: the admin's current safe list (ADR-0059). Null on any failure,
+ * which the caller treats as "keep the published flags". Not memoised: callers throttle, and a
+ * failure here is not a transport failure of the catalogue path.
+ */
+export async function fetchSafeChannelsFromR2(): Promise<Set<string> | null> {
+  if (!available()) return null
+  return withBudget(R2_SAFE_CHANNELS_BUDGET_MS, async (ctl) =>
+    decodeSafeChannels(await getJson(safeChannelsUrl(BASE_URL), ctl, () => {}, 'no-cache')),
+  )
 }
 
 /** `catalogue/meta.json`: which generation is live. One small GET. */

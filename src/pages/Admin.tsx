@@ -143,6 +143,7 @@ export function Admin() {
   const [safeIdsText, setSafeIdsText] = useState('')
   const [safeEtag, setSafeEtag] = useState<string | null>(null)
   const [safeDirty, setSafeDirty] = useState(false)
+  const [safeRetry, setSafeRetry] = useState(false)
   const [safeLoadError, setSafeLoadError] = useState<string | null>(null)
   const [safeStatus, setSafeStatus] = useState('')
   const [safeErrors, setSafeErrors] = useState<string[]>([])
@@ -526,8 +527,19 @@ export function Admin() {
 
       setSafeIdsText(((payload?.ids as string[] | undefined) ?? []).join('\n'))
       setSafeEtag((payload?.etag as string) ?? null)
+      const saved = `Saved at ${String(payload?.updatedAt ?? 'now')}.`
+      // `republish` says whether the backend was asked to rebuild the cleared tree right away.
+      // A failed request leaves Save enabled, so pressing it again retries the request.
+      const republish = payload?.republish
       setSafeDirty(false)
-      setSafeStatus(`Saved at ${String(payload?.updatedAt ?? 'now')}.`)
+      setSafeRetry(republish === 'failed')
+      setSafeStatus(
+        republish === 'requested'
+          ? `${saved} It will be live in about a minute.`
+          : republish === 'failed'
+            ? `${saved} The immediate republish could not be requested, so it will land on the next scheduled sync. Save again to retry.`
+            : `${saved} The immediate republish is not set up here, so it will land on the next scheduled sync.`,
+      )
     } catch {
       setSafeErrors(['The save could not be sent.'])
       setSafeStatus('Not saved.')
@@ -1318,7 +1330,7 @@ export function Admin() {
           <button
             className="admin__btn admin__btn--primary"
             onClick={() => void saveSafeChannels()}
-            disabled={safeSaving || !safeDirty}
+            disabled={safeSaving || !(safeDirty || safeRetry)}
           >
             {safeSaving ? 'Saving…' : 'Save safe catalogue'}
           </button>

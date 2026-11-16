@@ -311,3 +311,46 @@ test.describe('the binding facade', () => {
     expect(res.status).toBe(405)
   })
 })
+
+test.describe('republish after a save', () => {
+  /** Counts `level-safe-tree` dispatches on top of the JWKS stub; `status` is what GitHub answers. */
+  function watchDispatch(status: number) {
+    const inner = globalThis.fetch
+    const events: unknown[] = []
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+      if (url.includes('api.github.com')) {
+        events.push(JSON.parse(String(init?.body)))
+        return new Response(null, { status })
+      }
+      return inner(input, init)
+    }) as typeof fetch
+    return events
+  }
+
+  const save = async (bucket: unknown, extraEnv: Record<string, unknown>, body: unknown = GOOD_BODY, headers: Record<string, string> = {}) =>
+    (await call(safeChannelsHandler, writeRequest(await goodToken(), body, headers), { ...ENV_VARS, CATALOGUE_BUCKET: bucket, ...extraEnv })).json()
+
+  test('a save dispatches once and says so; a missing token or a refusal still saves', async () => {
+    const events = watchDispatch(204)
+    expect((await save(makeBucket().bucket, { GITHUB_DISPATCH_TOKEN: 't' })).republish).toBe('requested')
+    expect(events).toEqual([{ event_type: 'level-safe-tree' }])
+
+    expect((await save(makeBucket().bucket, {})).republish).toBe('not-configured')
+
+    watchDispatch(403)
+    const refused = await save(makeBucket().bucket, { GITHUB_DISPATCH_TOKEN: 't' })
+    expect(refused.ok).toBe(true)
+    expect(refused.republish).toBe('failed')
+  })
+
+  test('saving the same ids again dispatches again, so a failed dispatch can be retried', async () => {
+    const events = watchDispatch(204)
+    const { bucket } = makeBucket()
+    const env = { GITHUB_DISPATCH_TOKEN: 't' }
+    const first = await save(bucket, env)
+    const again = await save(bucket, env, GOOD_BODY, { 'if-match': first.etag })
+    expect(again.republish).toBe('requested')
+    expect(events).toHaveLength(2)
+  })
+})

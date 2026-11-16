@@ -18,6 +18,7 @@
  */
 
 import { authoriseAccessRequest } from '../_lib/accessJwt'
+import { dispatchLevelSafeTree } from '../_lib/fastTrack'
 import { bindBucket, type CatalogueBucket } from '../_lib/catalogueBucket'
 import { bareEtag, json, readStoredJson, refuse, stripWeak } from '../_lib/httpJson'
 import {
@@ -60,7 +61,7 @@ async function conflict(bucket: CatalogueBucket, message: string): Promise<Respo
   )
 }
 
-async function handleWrite(request: Request, bucket: CatalogueBucket): Promise<Response> {
+async function handleWrite(request: Request, bucket: CatalogueBucket, env: unknown): Promise<Response> {
   const contentType = (request.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase()
   if (contentType !== 'application/json') {
     return json({ error: 'unsupported-media-type', detail: 'Content-Type must be application/json' }, 415)
@@ -139,8 +140,22 @@ async function handleWrite(request: Request, bucket: CatalogueBucket): Promise<R
   })
   if (!written) return conflict(bucket, 'safe-channels.json changed while it was being written.')
 
+  // Ask the backend to rebuild the cleared tree now rather than at the next sync. Always sent on
+  // a successful save (the rebuild is idempotent), so saving again retries a failed dispatch.
+  // Awaited, not `waitUntil`, so the response can say what happened (bounded by a 10 s timeout).
+  // A failure here is reported, never thrown: the save above already succeeded.
+  let republish: 'requested' | 'not-configured' | 'failed'
+  try {
+    republish = (await dispatchLevelSafeTree(env)) === 'dispatched' ? 'requested' : 'not-configured'
+  } catch (err) {
+    republish = 'failed'
+    console.warn(
+      `[picks] level-safe-tree dispatch failed (save already succeeded): ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+
   return json(
-    { ok: true, updatedAt, etag: written.httpEtag, ids: document.ids },
+    { ok: true, updatedAt, etag: written.httpEtag, ids: document.ids, republish },
     200,
     { ETag: written.httpEtag },
   )
@@ -171,5 +186,5 @@ export const onRequest: PagesFunction = async (context) => {
   }
 
   if (method === 'GET') return handleGet(bucket)
-  return handleWrite(request, bucket)
+  return handleWrite(request, bucket, env)
 }
