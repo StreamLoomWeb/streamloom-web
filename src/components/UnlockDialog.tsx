@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { CODE_LENGTH, getOrCreateClientCode, isWellFormedCode, redeemUnlockCode, sanitizeCodeInput } from '../util/unlock'
+import { CODE_LENGTH, getOrCreateClientCode, isWellFormedCode, redeemUnlockCode, sanitizeCodeInput, UnlockUnavailableError } from '../util/unlock'
 import './UnlockDialog.css'
 
 interface UnlockDialogProps {
@@ -58,8 +58,12 @@ export function UnlockDialog({ open, onClose }: UnlockDialogProps) {
         return
       }
       setError('That code did not match. Check it and try again.')
-    } catch {
-      setError('Could not reach the server. Check your connection and try again.')
+    } catch (e) {
+      setError(
+        e instanceof UnlockUnavailableError
+          ? 'Unlocking is not available right now. Try again later.'
+          : 'Could not reach the server. Check your connection and try again.'
+      )
     } finally {
       setSubmitting(false)
     }

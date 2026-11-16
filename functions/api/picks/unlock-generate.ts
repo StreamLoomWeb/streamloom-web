@@ -35,6 +35,15 @@ export const onRequest: PagesFunction = async (context) => {
     )
   }
 
+  const contentType = (request.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase()
+  if (contentType !== 'application/json') {
+    return json({ error: 'unsupported-media-type', detail: 'Content-Type must be application/json' }, 415)
+  }
+  const fetchSite = request.headers.get('sec-fetch-site')
+  if (fetchSite !== null && fetchSite !== 'same-origin' && fetchSite !== 'none') {
+    return json({ error: 'cross-site-write-refused' }, 403)
+  }
+
   let body: unknown
   try {
     body = await request.json()

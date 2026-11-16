@@ -46,6 +46,13 @@ test('a direct link to an unsafe channel 404s until the catalogue is unlocked', 
   await expect(page.locator('body')).not.toContainText(/not found/i, { timeout: 60_000 })
 })
 
+test('a catalogue with no safe channel shows a message and a retry, not a blank page', async ({ page, context }) => {
+  await installUpstashMock(context, { totalChannels: 3, guideChannels: 3, unsafeChannels: 3 })
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'No channels available yet' })).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByRole('button', { name: 'Try again' })).toBeFocused()
+})
+
 test.describe('the unlock dialog', () => {
   test('seven taps on the version string open it, with a persisted client code', async ({ page, context }) => {
     await installUpstashMock(context, { totalChannels: 5, guideChannels: 5 })

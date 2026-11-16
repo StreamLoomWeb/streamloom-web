@@ -5,6 +5,7 @@ import { orderPickItems } from '../api/r2Contract'
 import type { FastTrackEntry, PickItem, PicksDocument } from '../api/r2Contract'
 import type { EnrichedChannel } from '../hooks/useChannels'
 import type { Stream } from '../api/types'
+import { isUnlocked } from '../util/unlock'
 import './PicksRow.css'
 
 /**
@@ -164,6 +165,7 @@ export function PicksRow({ channels, onWatch, filter, epgChannelIds }: Props) {
     return map
   }, [fastTrack])
 
+  const unlocked = isUnlocked()
   const groups = useMemo<ResolvedGroup[]>(() => {
     if (!picks) return []
     const out: ResolvedGroup[] = []
@@ -176,6 +178,9 @@ export function PicksRow({ channels, onWatch, filter, epgChannelIds }: Props) {
           resolved.push({ channel, note: item.note, pending: false })
           continue
         }
+        // Locked: `channels` holds only safe channels, so a miss here is a pin outside the
+        // safe list. It is left out rather than drawn as a fast-track or pending card.
+        if (!unlocked) continue
         const fastTracked = byFastTrack.get(item.channelId)
         if (fastTracked) {
           resolved.push({ channel: synthesizeFastTrackChannel(fastTracked), note: item.note, pending: false })
@@ -196,7 +201,7 @@ export function PicksRow({ channels, onWatch, filter, epgChannelIds }: Props) {
       out.push({ title: group.title, picks: displayed, pendingCount })
     }
     return out
-  }, [picks, byId, byFastTrack, filter])
+  }, [picks, byId, byFastTrack, filter, unlocked])
 
   if (groups.length === 0) return null
 

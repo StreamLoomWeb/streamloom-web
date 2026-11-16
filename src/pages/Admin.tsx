@@ -485,6 +485,10 @@ export function Admin() {
         .split('\n')
         .map((line) => line.trim())
         .filter((line) => line.length > 0)
+      if (ids.length === 0 && !window.confirm('Save an empty safe list? Every locked visitor will see no channels.')) {
+        setSafeStatus('Not saved.')
+        return
+      }
       const res = await fetch('/api/picks/safe-channels', {
         method: 'PUT',
         credentials: 'same-origin',
@@ -498,13 +502,15 @@ export function Admin() {
       const payload = (await res.json().catch(() => null)) as Record<string, unknown> | null
 
       if (res.status === 412) {
+        // The list in the box is the admin's work and stays. Only the etag moves, so the next
+        // Save is a deliberate replace of the newer copy rather than a silent loss of this one.
+        const theirs = ((payload?.ids as string[] | undefined) ?? []).length
         setSafeErrors([
           String(payload?.detail ?? 'Someone else saved a newer copy.') +
-            ' The newer copy has been loaded; re-apply your changes and save again.',
+            ` That copy has ${theirs} ids. Your list is kept here: save again to replace it, or reload the page to take theirs.`,
         ])
-        setSafeIdsText(((payload?.ids as string[] | undefined) ?? []).join('\n'))
         setSafeEtag((payload?.etag as string | null) ?? null)
-        setSafeStatus('Not saved: a newer copy was loaded.')
+        setSafeStatus('Not saved: a newer copy exists.')
         return
       }
       if (res.status === 401 || res.status === 403) {

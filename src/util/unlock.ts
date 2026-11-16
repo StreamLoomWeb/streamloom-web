@@ -118,6 +118,15 @@ try {
  * so the caller can distinguish "wrong code" (a normal, retryable outcome) from "could not
  * reach the server" (a different message is warranted).
  */
+/** The server answered, but not with a verdict (no secret set, rate limited, and so on). */
+export class UnlockUnavailableError extends Error {
+  readonly status: number
+  constructor(status: number) {
+    super(`unlock-validate failed (${status})`)
+    this.status = status
+  }
+}
+
 export async function redeemUnlockCode(unlockCode: string): Promise<boolean> {
   const clientCode = getOrCreateClientCode()
   const res = await fetch('/api/unlock-validate', {
@@ -125,7 +134,7 @@ export async function redeemUnlockCode(unlockCode: string): Promise<boolean> {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ clientCode, unlockCode }),
   })
-  if (!res.ok) throw new Error(`unlock-validate failed (${res.status})`)
+  if (!res.ok) throw new UnlockUnavailableError(res.status)
   const body = (await res.json().catch(() => null)) as { valid?: unknown } | null
   const valid = body?.valid === true
   if (valid) setUnlocked(true)

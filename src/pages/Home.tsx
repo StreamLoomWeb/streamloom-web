@@ -537,6 +537,14 @@ export function Home() {
           </p>
           <button onClick={refresh} autoFocus>Try again</button>
         </div>
+      ) : !loading && !allChannels.length ? (
+        <div className="home-error" role="status">
+          <h2 className="home-error__title">No channels available yet</h2>
+          <p className="home-error__text">
+            The channel list is empty right now. This is usually temporary, so try again in a moment.
+          </p>
+          <button onClick={refresh} autoFocus>Try again</button>
+        </div>
       ) : loading && !channels.length ? (
         <div className="home-skeleton">
           <div className="skeleton" style={{ height: '40vh', marginBottom: 40, borderRadius: 28 }} />

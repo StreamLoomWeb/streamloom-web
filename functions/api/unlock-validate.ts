@@ -48,9 +48,15 @@ export const onRequest: PagesFunction = async (context) => {
     return json({ error: 'too-large' }, 413, NO_STORE)
   }
 
+  // Content-Length is the sender's claim; a chunked body carries none, so measure it.
+  const text = await request.text()
+  if (new TextEncoder().encode(text).byteLength > 1024) {
+    return json({ error: 'too-large' }, 413, NO_STORE)
+  }
+
   let body: unknown
   try {
-    body = await request.json()
+    body = JSON.parse(text)
   } catch {
     return json({ error: 'invalid-json' }, 400, NO_STORE)
   }
