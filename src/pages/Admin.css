@@ -160,6 +160,40 @@
   flex: 1 1 240px;
 }
 
+.admin__textarea {
+  width: 100%;
+  min-height: 160px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  resize: vertical;
+}
+
+.admin__textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.admin__unlock-result {
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+.admin__unlock-result code {
+  padding: 4px 10px;
+  margin-left: 6px;
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
 .admin__group {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
