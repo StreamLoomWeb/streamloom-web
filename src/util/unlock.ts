@@ -112,12 +112,6 @@ try {
   // no window (SSR/test): nothing to listen to
 }
 
-/**
- * Redeems `unlockCode` against this device's client code via the public, unauthenticated
- * `/api/unlock-validate`. Returns whether it was valid; throws only on a network/HTTP failure
- * so the caller can distinguish "wrong code" (a normal, retryable outcome) from "could not
- * reach the server" (a different message is warranted).
- */
 /** The server answered, but not with a verdict (no secret set, rate limited, and so on). */
 export class UnlockUnavailableError extends Error {
   readonly status: number
@@ -127,6 +121,12 @@ export class UnlockUnavailableError extends Error {
   }
 }
 
+/**
+ * Redeems `unlockCode` against this device's client code via the public, unauthenticated
+ * `/api/unlock-validate`. Returns whether it was valid; throws only on a network/HTTP failure
+ * so the caller can distinguish "wrong code" (a normal, retryable outcome) from "could not
+ * reach the server" (a different message is warranted).
+ */
 export async function redeemUnlockCode(unlockCode: string): Promise<boolean> {
   const clientCode = getOrCreateClientCode()
   const res = await fetch('/api/unlock-validate', {

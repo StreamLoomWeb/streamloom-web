@@ -541,7 +541,7 @@ export function Home() {
         <div className="home-error" role="status">
           <h2 className="home-error__title">No channels available yet</h2>
           <p className="home-error__text">
-            The channel list is empty right now. This is usually temporary, so try again in a moment.
+            No channels are available here right now. Try again in a moment.
           </p>
           <button onClick={refresh} autoFocus>Try again</button>
         </div>
