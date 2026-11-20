@@ -13,7 +13,7 @@
        content renders in the system font immediately and upgrades to Inter
        when it arrives (font-display: swap). No page waits on the font CSS. -->
   <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" media="print" onload="this.media='all'" />
+  <link id="sl-font-css" rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" media="print" />
   <noscript>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" />
   </noscript>
@@ -28,19 +28,7 @@
     content="Watch thousands of live TV channels from around the world. Free, no registration. StreamLoom Web plays live TV right in your browser." />
   <meta name="theme-color" content="#0c0d11" />
 
-  <script>
-    (function () {
-      try {
-        var theme = localStorage.getItem('sl_theme') || 'dark';
-        document.documentElement.setAttribute('data-theme', theme);
-        if (theme === 'light') {
-          document.documentElement.classList.add('light-theme');
-        } else {
-          document.documentElement.classList.add('dark-theme');
-        }
-      } catch (e) { }
-    })();
-  </script>
+  <script src="/theme-init.js"></script>
 
   <!-- Open Graph -->
   <meta property="og:title" content="StreamLoom Web - Live TV Everywhere" />
