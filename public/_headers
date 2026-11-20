@@ -1,7 +1,28 @@
+# These apply to the SPA shell (every non-API path, including /admin, falls through
+# to index.html) and to its JS/CSS. Cloudflare Pages does not run _headers rules
+# against Pages Functions responses, so everything under /api/* keeps whatever
+# headers its own Function sets (e.g. /api/proxy's own
+# `Content-Security-Policy: sandbox` on the arbitrary upstream it relays).
+#
+# script-src/style-src carry no external host other than Google Fonts: every other
+# network call this app makes goes through its own /api/* Functions (same-origin) or
+# reads data directly (R2 catalogue snapshot, Upstash Redis fallback, the channel icon
+# CDN, custom per-channel stream/icon URLs). Those hosts are build-time configuration
+# or, for stream/icon URLs, literally anywhere a channel's owner hosts them — that is
+# this app's purpose, so connect-src/img-src/media-src allow any HTTPS host rather than
+# naming one (naming one would silently break the next R2/Upstash host swap or every
+# channel whose stream lives outside a fixed allow-list). script-src/object-src/base-uri
+# are what actually stop injected script and are kept to 'self'/'none' with no exception.
+# style-src keeps 'unsafe-inline' for React's inline `style={{}}` attributes; CSS alone
+# cannot execute script, so this does not weaken the script-src boundary above.
 /*
   X-Content-Type-Options: nosniff
-  X-Frame-Options: SAMEORIGIN
+  X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()
+  Cross-Origin-Opener-Policy: same-origin
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' https: data:; media-src 'self' https:; connect-src 'self' https:; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
 
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
